@@ -576,9 +576,9 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 						properties: parseProperties(query.properties),
 					};
 
-					const allFlags = await getCachedFlagsForClient(
-						query.clientId,
-						query.environment
+					const allFlags = await record(
+						"fetchFlagsForClient",
+						() => getCachedFlagsForClient(query.clientId, query.environment)
 					);
 
 					setAttributes({
@@ -587,15 +587,18 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 
 					const enabledFlags: Record<string, FlagResult> = {};
 
-					for (const flag of allFlags) {
-						const result = evaluateFlag(
-							flag as unknown as EvaluableFlag,
-							context
-						);
-						if (result.enabled) {
-							enabledFlags[flag.key] = result;
+					await record("evaluateAllFlags", () => {
+						setAttributes({ flag_count: allFlags.length });
+						for (const flag of allFlags) {
+							const result = evaluateFlag(
+								flag as unknown as EvaluableFlag,
+								context
+							);
+							if (result.enabled) {
+								enabledFlags[flag.key] = result;
+							}
 						}
-					}
+					});
 
 					setAttributes({
 						flag_enabled_count: Object.keys(enabledFlags).length,

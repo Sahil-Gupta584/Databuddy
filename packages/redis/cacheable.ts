@@ -1,3 +1,4 @@
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { getRedisCache } from "./redis";
 
 const activeRevalidations = new Map<string, Promise<void>>();
@@ -75,7 +76,7 @@ export function cacheable<
 	const getKey = (...args: Parameters<T>) =>
 		`${cachePrefix}:${stringify(args)}`;
 
-	const cachedFn = async (
+	const cachedFn = (
 		...args: Parameters<T>
 	): Promise<Awaited<ReturnType<T>>> => {
 		if (shouldSkipRedis()) {
@@ -83,48 +84,73 @@ export function cacheable<
 		}
 
 		const key = getKey(...args);
+		const tracer = trace.getTracer("redis");
 
-		try {
-			const redis = getRedisCache();
-			const cached = await redis.get(key);
-			redisAvailable = true;
-			lastRedisCheck = Date.now();
+		return tracer.startActiveSpan(`cache:${prefix}`, async (span): Promise<Awaited<ReturnType<T>>> => {
+			span.setAttribute("cache.prefix", prefix);
 
-			if (cached) {
-				if (staleWhileRevalidate) {
-					const ttl = await redis.ttl(key).catch(() => expireInSec);
-					if (ttl < staleTime && !activeRevalidations.has(key)) {
-						const revalidation = fn(...args)
-							.then(async (fresh) => {
-								if (fresh != null && redisAvailable) {
-									await redis
-										.setex(key, expireInSec, JSON.stringify(fresh))
-										.catch(() => {});
-								}
-							})
-							.catch(() => {})
-							.finally(() => activeRevalidations.delete(key));
-						activeRevalidations.set(key, revalidation);
+			try {
+				const redis = getRedisCache();
+				const cached = await redis.get(key);
+				redisAvailable = true;
+				lastRedisCheck = Date.now();
+
+				if (cached) {
+					span.setAttribute("cache.hit", true);
+
+					if (staleWhileRevalidate) {
+						const ttl = await redis.ttl(key).catch(() => expireInSec);
+						const isStale = ttl < staleTime;
+						span.setAttribute("cache.stale", isStale);
+
+						if (isStale && !activeRevalidations.has(key)) {
+							const revalidation = fn(...args)
+								.then(async (fresh) => {
+									if (fresh != null && redisAvailable) {
+										await redis
+											.setex(key, expireInSec, JSON.stringify(fresh))
+											.catch(() => { });
+									}
+								})
+								.catch(() => { })
+								.finally(() => activeRevalidations.delete(key));
+							activeRevalidations.set(key, revalidation);
+						}
 					}
-				}
-				return deserialize(cached) as Awaited<ReturnType<T>>;
-			}
 
-			const result = await fn(...args);
-			if (result != null && redisAvailable) {
-				await redis
-					.setex(key, expireInSec, JSON.stringify(result))
-					.catch(() => {
-						redisAvailable = false;
-						lastRedisCheck = Date.now();
-					});
+					span.setStatus({ code: SpanStatusCode.OK });
+					span.end();
+					return deserialize(cached) as Awaited<ReturnType<T>>;
+				}
+
+				span.setAttribute("cache.hit", false);
+
+				const result = await fn(...args);
+				if (result != null && redisAvailable) {
+					await redis
+						.setex(key, expireInSec, JSON.stringify(result))
+						.catch(() => {
+							redisAvailable = false;
+							lastRedisCheck = Date.now();
+						});
+				}
+
+				span.setStatus({ code: SpanStatusCode.OK });
+				span.end();
+				return result;
+			} catch (error) {
+				redisAvailable = false;
+				lastRedisCheck = Date.now();
+				span.setAttribute("cache.hit", false);
+				span.setAttribute("cache.error", true);
+				span.setStatus({
+					code: SpanStatusCode.ERROR,
+					message: error instanceof Error ? error.message : String(error),
+				});
+				span.end();
+				return fn(...args);
 			}
-			return result;
-		} catch {
-			redisAvailable = false;
-			lastRedisCheck = Date.now();
-			return fn(...args);
-		}
+		});
 	};
 
 	cachedFn.getKey = getKey;

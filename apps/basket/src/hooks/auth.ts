@@ -24,34 +24,42 @@ const REGEX_DOMAIN_LABEL = /^[a-zA-Z0-9-]+$/;
  * @param website The website object.
  * @returns A promise that resolves to the owner's user ID or null if not found.
  */
-async function _resolveOwnerId(website: Website): Promise<string | null> {
-	if (!website.organizationId) {
-		return null;
-	}
-
-	try {
-		const orgMember = await db.query.member.findFirst({
-			where: and(
-				eq(member.organizationId, website.organizationId),
-				eq(member.role, "owner")
-			),
-			columns: {
-				userId: true,
-			},
-		});
-
-		if (orgMember) {
-			return orgMember.userId;
+function _resolveOwnerId(website: Website): Promise<string | null> {
+	return record("resolveOwnerId", async () => {
+		if (!website.organizationId) {
+			setAttributes({ owner_resolve_skipped: true });
+			return null;
 		}
-	} catch (error) {
-		captureError(error, {
-			message: "Failed to fetch workspace owner",
-			websiteId: website.id,
-			organizationId: website.organizationId,
-		});
-	}
 
-	return null;
+		setAttributes({ organization_id: website.organizationId });
+
+		try {
+			const orgMember = await db.query.member.findFirst({
+				where: and(
+					eq(member.organizationId, website.organizationId),
+					eq(member.role, "owner")
+				),
+				columns: {
+					userId: true,
+				},
+			});
+
+			if (orgMember) {
+				setAttributes({ owner_found: true });
+				return orgMember.userId;
+			}
+
+			setAttributes({ owner_found: false });
+		} catch (error) {
+			captureError(error, {
+				message: "Failed to fetch workspace owner",
+				websiteId: website.id,
+				organizationId: website.organizationId,
+			});
+		}
+
+		return null;
+	});
 }
 
 const getOwnerId = cacheable(
@@ -69,35 +77,43 @@ const getOwnerId = cacheable(
  * Resolves the billing owner's user ID for an API key.
  * Returns the workspace (organization) owner's userId.
  */
-async function _resolveApiKeyOwnerId(
+function _resolveApiKeyOwnerId(
 	organizationId: string | null
 ): Promise<string | null> {
-	if (!organizationId) {
-		return null;
-	}
-
-	try {
-		const orgMember = await db.query.member.findFirst({
-			where: and(
-				eq(member.organizationId, organizationId),
-				eq(member.role, "owner")
-			),
-			columns: {
-				userId: true,
-			},
-		});
-
-		if (orgMember) {
-			return orgMember.userId;
+	return record("resolveApiKeyOwnerId", async () => {
+		if (!organizationId) {
+			setAttributes({ api_key_owner_resolve_skipped: true });
+			return null;
 		}
-	} catch (error) {
-		captureError(error, {
-			message: "Failed to fetch workspace owner for API key",
-			organizationId,
-		});
-	}
 
-	return null;
+		setAttributes({ organization_id: organizationId });
+
+		try {
+			const orgMember = await db.query.member.findFirst({
+				where: and(
+					eq(member.organizationId, organizationId),
+					eq(member.role, "owner")
+				),
+				columns: {
+					userId: true,
+				},
+			});
+
+			if (orgMember) {
+				setAttributes({ api_key_owner_found: true });
+				return orgMember.userId;
+			}
+
+			setAttributes({ api_key_owner_found: false });
+		} catch (error) {
+			captureError(error, {
+				message: "Failed to fetch workspace owner for API key",
+				organizationId,
+			});
+		}
+
+		return null;
+	});
 }
 
 export const resolveApiKeyOwnerId = cacheable(

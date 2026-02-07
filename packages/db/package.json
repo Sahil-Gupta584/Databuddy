@@ -8,6 +8,9 @@
     "./client": "./src/client.ts",
     "./clickhouse": "./clickhouse/index.ts"
   },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0"
+  },
   "dependencies": {
     "@clickhouse/client": "^1.14.0",
     "@databuddy/cache": "latest",

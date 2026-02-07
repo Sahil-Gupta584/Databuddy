@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { cacheable, redis } from "@databuddy/redis";
-import { captureError } from "@lib/tracing";
+import { captureError, record, setAttributes } from "@lib/tracing";
 import { CryptoHasher } from "bun";
 
 const EXIT_EVENT_TTL = 172_800;
@@ -12,25 +12,31 @@ function getCurrentDay(): number {
 }
 
 export const getDailySalt = cacheable(
-	async (): Promise<string> => {
-		const saltKey = `salt:${getCurrentDay()}`;
-		try {
-			const salt = await redis.get(saltKey);
-			if (salt) {
-				return salt;
-			}
+	(): Promise<string> =>
+		record("getDailySalt", async () => {
+			const saltKey = `salt:${getCurrentDay()}`;
+			try {
+				const salt = await redis.get(saltKey);
+				setAttributes({ redis_hit: Boolean(salt) });
+				if (salt) {
+					return salt;
+				}
 
-			const newSalt = crypto.randomBytes(32).toString("hex");
-			const SALT_TTL = 60 * 60 * 24;
-			redis.setex(saltKey, SALT_TTL, newSalt).catch((error) => {
-				captureError(error, { message: "Failed to set daily salt in Redis" });
-			});
-			return newSalt;
-		} catch (error) {
-			captureError(error, { message: "Failed to get daily salt from Redis" });
-			return crypto.randomBytes(32).toString("hex");
-		}
-	},
+				const newSalt = crypto.randomBytes(32).toString("hex");
+				const SALT_TTL = 60 * 60 * 24;
+				redis.setex(saltKey, SALT_TTL, newSalt).catch((error) => {
+					captureError(error, {
+						message: "Failed to set daily salt in Redis",
+					});
+				});
+				return newSalt;
+			} catch (error) {
+				captureError(error, {
+					message: "Failed to get daily salt from Redis",
+				});
+				return crypto.randomBytes(32).toString("hex");
+			}
+		}),
 	{
 		expireInSec: 3600,
 		prefix: "daily_salt",
@@ -55,22 +61,30 @@ export function saltAnonymousId(anonymousId: string, salt: string): string {
 	}
 }
 
-export async function checkDuplicate(
+export function checkDuplicate(
 	eventId: string,
 	eventType: string
 ): Promise<boolean> {
-	const key = `dedup:${eventType}:${eventId}`;
-	const ttl = eventId.startsWith("exit_") ? EXIT_EVENT_TTL : STANDARD_EVENT_TTL;
+	return record("checkDuplicate", async () => {
+		const key = `dedup:${eventType}:${eventId}`;
+		const ttl = eventId.startsWith("exit_")
+			? EXIT_EVENT_TTL
+			: STANDARD_EVENT_TTL;
 
-	try {
-		const result = await redis.set(key, "1", "EX", ttl, "NX");
-		return result === null;
-	} catch (error) {
-		captureError(error, {
-			message: "Failed to check duplicate event in Redis",
-			eventId,
-			eventType,
-		});
-		return false;
-	}
+		setAttributes({ dedup_event_type: eventType });
+
+		try {
+			const result = await redis.set(key, "1", "EX", ttl, "NX");
+			const isDuplicate = result === null;
+			setAttributes({ dedup_is_duplicate: isDuplicate });
+			return isDuplicate;
+		} catch (error) {
+			captureError(error, {
+				message: "Failed to check duplicate event in Redis",
+				eventId,
+				eventType,
+			});
+			return false;
+		}
+	});
 }

@@ -2,6 +2,7 @@ import type { InferSelectModel } from "@databuddy/db";
 import { apikey, db, eq } from "@databuddy/db";
 import { cacheable } from "@databuddy/redis";
 import { keys } from "@databuddy/rpc/src/routers/apikeys";
+import { record, setAttributes } from "@lib/tracing";
 import { hasScope, isExpired } from "keypal";
 
 export type ApiKeyRow = InferSelectModel<typeof apikey>;
@@ -51,22 +52,38 @@ export function extractSecret(headers: Headers): string | null {
 	return null;
 }
 
-export async function getApiKeyFromHeader(
+export function getApiKeyFromHeader(
 	headers: Headers
 ): Promise<ApiKeyRow | null> {
-	const secret = extractSecret(headers);
-	if (!secret) {
-		return null;
-	}
+	return record("getApiKeyFromHeader", async () => {
+		const secret = extractSecret(headers);
+		if (!secret) {
+			setAttributes({ api_key_present: false });
+			return null;
+		}
 
-	const keyHash = keys.hashKey(secret);
-	const key = await getCachedApiKeyByHash(keyHash);
+		setAttributes({ api_key_present: true });
 
-	if (!key?.enabled || key.revokedAt || isExpired(key.expiresAt)) {
-		return null;
-	}
+		const keyHash = keys.hashKey(secret);
+		const key = await getCachedApiKeyByHash(keyHash);
 
-	return key;
+		if (!key?.enabled || key.revokedAt || isExpired(key.expiresAt)) {
+			setAttributes({
+				api_key_valid: false,
+				api_key_reason: key
+					? key.enabled
+						? key.revokedAt
+							? "revoked"
+							: "expired"
+						: "disabled"
+					: "not_found",
+			});
+			return null;
+		}
+
+		setAttributes({ api_key_valid: true });
+		return key;
+	});
 }
 
 function collectScopes(key: ApiKeyRow, resource?: string): ApiScope[] {

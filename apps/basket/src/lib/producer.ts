@@ -216,16 +216,31 @@ export class EventProducer {
 					);
 
 					try {
-						for (let i = 0; i < events.length; i += this.config.chunkSize) {
-							const chunk = events.slice(i, i + this.config.chunkSize);
-							await this.dependencies.clickHouse.insert({
-								table,
-								values: chunk,
-								format: "JSONEachRow",
+						await record("clickhouseFallbackInsert", async () => {
+							setAttributes({
+								ch_table: table,
+								ch_event_count: events.length,
+								ch_chunk_size: this.config.chunkSize,
 							});
-						}
 
-						this.stats.flushed += events.length;
+							for (
+								let i = 0;
+								i < events.length;
+								i += this.config.chunkSize
+							) {
+								const chunk = events.slice(i, i + this.config.chunkSize);
+								await this.dependencies.clickHouse.insert({
+									table,
+									values: chunk,
+									format: "JSONEachRow",
+								});
+							}
+
+							this.stats.flushed += events.length;
+							setAttributes({
+								ch_flushed: events.length,
+							});
+						});
 					} catch (error) {
 						clearTimeout(timeout);
 						this.stats.errors += 1;

@@ -20,29 +20,36 @@ let loadPromise: Promise<void> | null = null;
 let loadError: Error | null = null;
 let dbBuffer: Buffer | null = null;
 
-async function loadDatabaseFromCdn(): Promise<Buffer> {
-	try {
-		const response = await fetch(CDN_URL);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch database from CDN: ${response.status} ${response.statusText}`
-			);
+function loadDatabaseFromCdn(): Promise<Buffer> {
+	return record("loadDatabaseFromCdn", async () => {
+		try {
+			const response = await fetch(CDN_URL);
+			if (!response.ok) {
+				throw new Error(
+					`Failed to fetch database from CDN: ${response.status} ${response.statusText}`
+				);
+			}
+
+			const arrayBuffer = await response.arrayBuffer();
+			const buf = Buffer.from(arrayBuffer);
+
+			setAttributes({
+				cdn_status: response.status,
+				cdn_db_size_bytes: buf.length,
+			});
+
+			if (buf.length < 1_000_000) {
+				throw new Error(
+					`Database file seems too small: ${buf.length} bytes`
+				);
+			}
+
+			return buf;
+		} catch (error) {
+			captureError(error, { message: "Failed to load database from CDN" });
+			throw error;
 		}
-
-		const arrayBuffer = await response.arrayBuffer();
-		const dbBuffer = Buffer.from(arrayBuffer);
-
-		if (dbBuffer.length < 1_000_000) {
-			throw new Error(
-				`Database file seems too small: ${dbBuffer.length} bytes`
-			);
-		}
-
-		return dbBuffer;
-	} catch (error) {
-		captureError(error, { message: "Failed to load database from CDN" });
-		throw error;
-	}
+	});
 }
 
 function loadDatabase() {
@@ -177,41 +184,44 @@ export function anonymizeIp(ip: string): string {
 	return hash.digest("hex").substring(0, 12);
 }
 
-export async function getGeo(ip: string, request?: Request) {
-	if (!ip || ignore.includes(ip) || !isValidIp(ip)) {
-		return {
-			anonymizedIP: anonymizeIp(ip),
-			country: undefined,
-			region: undefined,
-			city: undefined,
-		};
-	}
-
-	const geo = await getGeoLocation(ip);
-
-	// Fallback to Cloudflare headers if MMDB lookup failed
-	if (!geo.country && request?.headers) {
-		const cfCountry = getCloudflareCountry(request.headers);
-		if (cfCountry) {
-			setAttributes({
-				geo_fallback: "cloudflare",
-				geo_country: cfCountry,
-			});
+export function getGeo(ip: string, request?: Request) {
+	return record("getGeo", async () => {
+		if (!ip || ignore.includes(ip) || !isValidIp(ip)) {
+			setAttributes({ geo_skipped: true, geo_reason: "invalid_ip" });
 			return {
 				anonymizedIP: anonymizeIp(ip),
-				country: cfCountry,
+				country: undefined,
 				region: undefined,
 				city: undefined,
 			};
 		}
-	}
 
-	return {
-		anonymizedIP: anonymizeIp(ip),
-		country: geo.country,
-		region: geo.region,
-		city: geo.city,
-	};
+		const geo = await getGeoLocation(ip);
+
+		// Fallback to Cloudflare headers if MMDB lookup failed
+		if (!geo.country && request?.headers) {
+			const cfCountry = getCloudflareCountry(request.headers);
+			if (cfCountry) {
+				setAttributes({
+					geo_fallback: "cloudflare",
+					geo_country: cfCountry,
+				});
+				return {
+					anonymizedIP: anonymizeIp(ip),
+					country: cfCountry,
+					region: undefined,
+					city: undefined,
+				};
+			}
+		}
+
+		return {
+			anonymizedIP: anonymizeIp(ip),
+			country: geo.country,
+			region: geo.region,
+			city: geo.city,
+		};
+	});
 }
 
 export function extractIpFromRequest(request: Request): string {

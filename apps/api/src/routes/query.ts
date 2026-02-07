@@ -319,16 +319,16 @@ type ProjectType = "website" | "schedule" | "link" | "organization";
 
 type ProjectAccessResult =
 	| {
-			success: true;
-			projectId: string;
-			projectType: ProjectType;
-	  }
+		success: true;
+		projectId: string;
+		projectType: ProjectType;
+	}
 	| {
-			success: false;
-			error: string;
-			code: string;
-			status?: number;
-	  };
+		success: false;
+		error: string;
+		code: string;
+		status?: number;
+	};
 
 function createAuthFailedResponse(requestId: string): Response {
 	return new Response(
@@ -401,173 +401,239 @@ async function getWebsiteOwnerId(websiteId: string): Promise<string | null> {
 	return website.organizationId ?? null;
 }
 
-async function verifyWebsiteAccess(
+function verifyWebsiteAccess(
 	ctx: AuthContext,
 	websiteId: string
 ): Promise<boolean> {
-	const website = await db.query.websites.findFirst({
-		where: eq(websites.id, websiteId),
-		columns: {
-			id: true,
-			isPublic: true,
-			organizationId: true,
-		},
-	});
+	return record("verifyWebsiteAccess", async () => {
+		setAttributes({ access_check_type: "website", website_id: websiteId });
 
-	if (!website) {
-		return false;
-	}
-
-	if (website.isPublic) {
-		return true;
-	}
-
-	if (!ctx.isAuthenticated) {
-		return false;
-	}
-
-	// Website must belong to a workspace
-	if (!website.organizationId) {
-		return false;
-	}
-
-	if (ctx.apiKey) {
-		if (hasGlobalAccess(ctx.apiKey)) {
-			if (ctx.apiKey.organizationId) {
-				return website.organizationId === ctx.apiKey.organizationId;
-			}
-			return false;
-		}
-
-		const accessibleIds = getAccessibleWebsiteIds(ctx.apiKey);
-		return accessibleIds.includes(websiteId);
-	}
-
-	if (ctx.user) {
-		const membership = await db.query.member.findFirst({
-			where: and(
-				eq(member.userId, ctx.user.id),
-				eq(member.organizationId, website.organizationId)
-			),
+		const website = await db.query.websites.findFirst({
+			where: eq(websites.id, websiteId),
 			columns: {
 				id: true,
+				isPublic: true,
+				organizationId: true,
 			},
 		});
 
-		return !!membership;
-	}
+		if (!website) {
+			setAttributes({ access_result: "not_found" });
+			return false;
+		}
 
-	return false;
+		if (website.isPublic) {
+			setAttributes({ access_result: "public" });
+			return true;
+		}
+
+		if (!ctx.isAuthenticated) {
+			setAttributes({ access_result: "unauthenticated" });
+			return false;
+		}
+
+		if (!website.organizationId) {
+			setAttributes({ access_result: "no_organization" });
+			return false;
+		}
+
+		if (ctx.apiKey) {
+			if (hasGlobalAccess(ctx.apiKey)) {
+				if (ctx.apiKey.organizationId) {
+					const granted =
+						website.organizationId === ctx.apiKey.organizationId;
+					setAttributes({
+						access_result: granted ? "api_key_global" : "api_key_denied",
+					});
+					return granted;
+				}
+				setAttributes({ access_result: "api_key_no_org" });
+				return false;
+			}
+
+			const accessibleIds = getAccessibleWebsiteIds(ctx.apiKey);
+			const granted = accessibleIds.includes(websiteId);
+			setAttributes({
+				access_result: granted ? "api_key_scoped" : "api_key_denied",
+			});
+			return granted;
+		}
+
+		if (ctx.user) {
+			const membership = await db.query.member.findFirst({
+				where: and(
+					eq(member.userId, ctx.user.id),
+					eq(member.organizationId, website.organizationId)
+				),
+				columns: {
+					id: true,
+				},
+			});
+
+			setAttributes({
+				access_result: membership ? "member" : "not_member",
+			});
+			return !!membership;
+		}
+
+		setAttributes({ access_result: "denied" });
+		return false;
+	});
 }
 
-async function verifyScheduleAccess(
+function verifyScheduleAccess(
 	ctx: AuthContext,
 	scheduleId: string
 ): Promise<boolean> {
-	const schedule = await db.query.uptimeSchedules.findFirst({
-		where: eq(uptimeSchedules.id, scheduleId),
-		columns: {
-			id: true,
-			organizationId: true,
-		},
-	});
+	return record("verifyScheduleAccess", async () => {
+		setAttributes({ access_check_type: "schedule", schedule_id: scheduleId });
 
-	if (!schedule) {
-		return false;
-	}
-
-	if (!ctx.isAuthenticated) {
-		return false;
-	}
-
-	// Check workspace membership
-	if (ctx.user) {
-		const membership = await db.query.member.findFirst({
-			where: and(
-				eq(member.userId, ctx.user.id),
-				eq(member.organizationId, schedule.organizationId)
-			),
-			columns: { id: true },
+		const schedule = await db.query.uptimeSchedules.findFirst({
+			where: eq(uptimeSchedules.id, scheduleId),
+			columns: {
+				id: true,
+				organizationId: true,
+			},
 		});
-		return !!membership;
-	}
 
-	if (ctx.apiKey) {
-		return ctx.apiKey.organizationId === schedule.organizationId;
-	}
+		if (!schedule) {
+			setAttributes({ access_result: "not_found" });
+			return false;
+		}
 
-	return false;
+		if (!ctx.isAuthenticated) {
+			setAttributes({ access_result: "unauthenticated" });
+			return false;
+		}
+
+		if (ctx.user) {
+			const membership = await db.query.member.findFirst({
+				where: and(
+					eq(member.userId, ctx.user.id),
+					eq(member.organizationId, schedule.organizationId)
+				),
+				columns: { id: true },
+			});
+			setAttributes({
+				access_result: membership ? "member" : "not_member",
+			});
+			return !!membership;
+		}
+
+		if (ctx.apiKey) {
+			const granted = ctx.apiKey.organizationId === schedule.organizationId;
+			setAttributes({
+				access_result: granted ? "api_key_match" : "api_key_denied",
+			});
+			return granted;
+		}
+
+		setAttributes({ access_result: "denied" });
+		return false;
+	});
 }
 
-async function verifyLinkAccess(
+function verifyLinkAccess(
 	ctx: AuthContext,
 	linkId: string
 ): Promise<boolean> {
-	const link = await db.query.links.findFirst({
-		where: and(eq(links.id, linkId), isNull(links.deletedAt)),
-		columns: {
-			id: true,
-			organizationId: true,
-			createdBy: true,
-		},
-	});
+	return record("verifyLinkAccess", async () => {
+		setAttributes({ access_check_type: "link", link_id: linkId });
 
-	if (!link) {
-		return false;
-	}
-
-	if (!ctx.isAuthenticated) {
-		return false;
-	}
-
-	// Check organization membership
-	if (ctx.user && link.organizationId) {
-		const membership = await db.query.member.findFirst({
-			where: and(
-				eq(member.userId, ctx.user.id),
-				eq(member.organizationId, link.organizationId)
-			),
-			columns: { id: true },
+		const link = await db.query.links.findFirst({
+			where: and(eq(links.id, linkId), isNull(links.deletedAt)),
+			columns: {
+				id: true,
+				organizationId: true,
+				createdBy: true,
+			},
 		});
-		return !!membership;
-	}
 
-	// Check direct ownership
-	if (ctx.user) {
-		return link.createdBy === ctx.user.id;
-	}
+		if (!link) {
+			setAttributes({ access_result: "not_found" });
+			return false;
+		}
 
-	if (ctx.apiKey) {
-		return ctx.apiKey.organizationId === link.organizationId;
-	}
+		if (!ctx.isAuthenticated) {
+			setAttributes({ access_result: "unauthenticated" });
+			return false;
+		}
 
-	return false;
+		if (ctx.user && link.organizationId) {
+			const membership = await db.query.member.findFirst({
+				where: and(
+					eq(member.userId, ctx.user.id),
+					eq(member.organizationId, link.organizationId)
+				),
+				columns: { id: true },
+			});
+			setAttributes({
+				access_result: membership ? "member" : "not_member",
+			});
+			return !!membership;
+		}
+
+		if (ctx.user) {
+			const granted = link.createdBy === ctx.user.id;
+			setAttributes({
+				access_result: granted ? "owner" : "not_owner",
+			});
+			return granted;
+		}
+
+		if (ctx.apiKey) {
+			const granted = ctx.apiKey.organizationId === link.organizationId;
+			setAttributes({
+				access_result: granted ? "api_key_match" : "api_key_denied",
+			});
+			return granted;
+		}
+
+		setAttributes({ access_result: "denied" });
+		return false;
+	});
 }
 
-async function verifyOrganizationAccess(
+function verifyOrganizationAccess(
 	ctx: AuthContext,
 	organizationId: string
 ): Promise<boolean> {
-	if (!ctx.isAuthenticated) {
-		return false;
-	}
-
-	if (ctx.user) {
-		const membership = await db.query.member.findFirst({
-			where: and(
-				eq(member.userId, ctx.user.id),
-				eq(member.organizationId, organizationId)
-			),
-			columns: { id: true },
+	return record("verifyOrganizationAccess", async () => {
+		setAttributes({
+			access_check_type: "organization",
+			organization_id: organizationId,
 		});
-		return !!membership;
-	}
 
-	if (ctx.apiKey) {
-		return ctx.apiKey.organizationId === organizationId;
-	}
+		if (!ctx.isAuthenticated) {
+			setAttributes({ access_result: "unauthenticated" });
+			return false;
+		}
 
-	return false;
+		if (ctx.user) {
+			const membership = await db.query.member.findFirst({
+				where: and(
+					eq(member.userId, ctx.user.id),
+					eq(member.organizationId, organizationId)
+				),
+				columns: { id: true },
+			});
+			setAttributes({
+				access_result: membership ? "member" : "not_member",
+			});
+			return !!membership;
+		}
+
+		if (ctx.apiKey) {
+			const granted = ctx.apiKey.organizationId === organizationId;
+			setAttributes({
+				access_result: granted ? "api_key_match" : "api_key_denied",
+			});
+			return granted;
+		}
+
+		setAttributes({ access_result: "denied" });
+		return false;
+	});
 }
 
 async function resolveProjectAccess(
@@ -743,12 +809,12 @@ function getTimeUnit(
 type ParameterInput =
 	| string
 	| {
-			name: string;
-			start_date?: string;
-			end_date?: string;
-			granularity?: string;
-			id?: string;
-	  };
+		name: string;
+		start_date?: string;
+		end_date?: string;
+		granularity?: string;
+		id?: string;
+	};
 
 function parseQueryParameter(param: ParameterInput) {
 	if (typeof param === "string") {

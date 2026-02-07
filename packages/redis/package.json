@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Redis caching and pub/sub utilities for Databuddy",
   "main": "index.ts",
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0"
+  },
   "dependencies": {
     "ioredis": "^5.8.2",
     "superjson": "catalog:",

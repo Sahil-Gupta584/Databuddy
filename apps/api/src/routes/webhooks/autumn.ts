@@ -183,18 +183,20 @@ async function handleThresholdReached(
 		limit: limitAmount,
 	});
 
-	const result = await resend.emails.send({
-		from: "Databuddy <alerts@databuddy.cc>",
-		to: email,
-		subject: `You've reached your ${featureName} limit`,
-		react: UsageLimitEmail({
-			featureName,
-			usageAmount,
-			limitAmount,
-			userName: customer.name ?? undefined,
-			thresholdType: threshold_type,
-		}),
-	});
+	const result = await record("resendSendEmail", () =>
+		resend.emails.send({
+			from: "Databuddy <alerts@databuddy.cc>",
+			to: email,
+			subject: `You've reached your ${featureName} limit`,
+			react: UsageLimitEmail({
+				featureName,
+				usageAmount,
+				limitAmount,
+				userName: customer.name ?? undefined,
+				thresholdType: threshold_type,
+			}),
+		})
+	);
 
 	if (result.error) {
 		logger.error(
@@ -263,12 +265,12 @@ function verifyWebhookSignature(
 type WebhookBody =
 	| { type: string; data: ThresholdData | ProductsUpdatedData }
 	| {
-			customer: AutumnCustomer;
-			feature?: AutumnFeature;
-			threshold_type?: ThresholdType;
-			scenario?: ProductScenario;
-			updated_product?: { id: string; name: string };
-	  };
+		customer: AutumnCustomer;
+		feature?: AutumnFeature;
+		threshold_type?: ThresholdType;
+		scenario?: ProductScenario;
+		updated_product?: { id: string; name: string };
+	};
 
 export const autumnWebhook = new Elysia().post(
 	"/autumn",

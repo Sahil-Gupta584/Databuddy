@@ -1,7 +1,7 @@
 import { getWebsiteByIdV2 } from "@hooks/auth";
 import { getApiKeyFromHeader, hasKeyScope } from "@lib/api-key";
 import { insertCustomEvents } from "@lib/event-service";
-import { captureError } from "@lib/tracing";
+import { captureError, record, setAttributes } from "@lib/tracing";
 import { Elysia } from "elysia";
 import { z } from "zod";
 
@@ -61,66 +61,81 @@ function parseTimestamp(
 	return new Date(value).getTime();
 }
 
-async function resolveAuth(
+function resolveAuth(
 	headers: Headers,
 	websiteIdParam?: string
 ): Promise<AuthResult> {
-	const apiKey = await getApiKeyFromHeader(headers);
+	return record("resolveAuth", async () => {
+		const apiKey = await getApiKeyFromHeader(headers);
 
-	if (apiKey) {
-		if (!hasKeyScope(apiKey, "track:events")) {
+		if (apiKey) {
+			if (!hasKeyScope(apiKey, "track:events")) {
+				setAttributes({ auth_failed: true, auth_reason: "missing_scope" });
+				return {
+					success: false,
+					error: {
+						status: "error",
+						message: "API key missing track:events scope",
+					},
+					status: 403,
+				};
+			}
+
+			const ownerId = apiKey.organizationId ?? apiKey.userId;
+			if (!ownerId) {
+				setAttributes({ auth_failed: true, auth_reason: "missing_owner" });
+				return {
+					success: false,
+					error: { status: "error", message: "API key missing owner" },
+					status: 400,
+				};
+			}
+
+			setAttributes({ auth_method: "api_key", auth_success: true });
+			return { success: true, ownerId };
+		}
+
+		if (!websiteIdParam) {
+			setAttributes({ auth_failed: true, auth_reason: "no_credentials" });
 			return {
 				success: false,
 				error: {
 					status: "error",
-					message: "API key missing track:events scope",
+					message: "API key or website_id required",
 				},
-				status: 403,
+				status: 401,
 			};
 		}
 
-		const ownerId = apiKey.organizationId ?? apiKey.userId;
-		if (!ownerId) {
+		const website = await getWebsiteByIdV2(websiteIdParam);
+		if (!website) {
+			setAttributes({ auth_failed: true, auth_reason: "website_not_found" });
 			return {
 				success: false,
-				error: { status: "error", message: "API key missing owner" },
+				error: { status: "error", message: "Website not found" },
+				status: 404,
+			};
+		}
+
+		if (!website.organizationId) {
+			setAttributes({ auth_failed: true, auth_reason: "no_organization" });
+			return {
+				success: false,
+				error: {
+					status: "error",
+					message: "Website missing organization",
+				},
 				status: 400,
 			};
 		}
 
-		return { success: true, ownerId };
-	}
-
-	if (!websiteIdParam) {
+		setAttributes({ auth_method: "website_id", auth_success: true });
 		return {
-			success: false,
-			error: { status: "error", message: "API key or website_id required" },
-			status: 401,
+			success: true,
+			ownerId: website.organizationId,
+			websiteId: websiteIdParam,
 		};
-	}
-
-	const website = await getWebsiteByIdV2(websiteIdParam);
-	if (!website) {
-		return {
-			success: false,
-			error: { status: "error", message: "Website not found" },
-			status: 404,
-		};
-	}
-
-	if (!website.organizationId) {
-		return {
-			success: false,
-			error: { status: "error", message: "Website missing organization" },
-			status: 400,
-		};
-	}
-
-	return {
-		success: true,
-		ownerId: website.organizationId,
-		websiteId: websiteIdParam,
-	};
+	});
 }
 
 export const trackRoute = new Elysia().post(
