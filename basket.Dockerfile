@@ -27,7 +27,7 @@ RUN bun build \
 	--bytecode \
 	./src/index.ts
 
-FROM gcr.io/distroless/base
+FROM gcr.io/distroless/cc
 
 WORKDIR /app
 
