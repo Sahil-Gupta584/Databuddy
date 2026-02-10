@@ -13,37 +13,28 @@ type ChatContextType = ReturnType<typeof useAiSdkChat<UIMessage>>;
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
-function getEffectiveInitialMessages(
-	websiteId: string,
-	chatId: string,
-	serverMessages: UIMessage[]
-): UIMessage[] {
-	if (serverMessages.length > 0) return serverMessages;
-	if (typeof window === "undefined") return [];
-	return getMessagesFromLocal(websiteId, chatId);
-}
-
 export function ChatProvider({
 	chatId,
 	websiteId,
-	initialMessages,
 	children,
 }: {
 	chatId: string;
 	websiteId: string;
-	initialMessages: UIMessage[];
 	children: React.ReactNode;
 }) {
-	const messagesToUse = useMemo(
-		() => getEffectiveInitialMessages(websiteId, chatId, initialMessages),
-		[websiteId, chatId, initialMessages]
+	const initialMessages = useMemo(
+		() =>
+			typeof window === "undefined"
+				? []
+				: getMessagesFromLocal(websiteId, chatId),
+		[websiteId, chatId]
 	);
 
 	const transport = useAgentChatTransport(chatId);
 	const chat = useAiSdkChat<UIMessage>({
 		id: chatId,
 		transport,
-		messages: messagesToUse,
+		messages: initialMessages,
 	});
 
 	useEffect(() => {

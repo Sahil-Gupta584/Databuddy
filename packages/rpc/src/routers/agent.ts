@@ -1,50 +1,8 @@
-import { redis } from "@databuddy/redis";
-import type { UIMessage } from "ai";
 import { z } from "zod";
 import { protectedProcedure } from "../orpc";
 import { authorizeWebsiteAccess } from "../utils/auth";
 
-function chatKey(chatId: string): string {
-	return `chat:messages:${chatId}`;
-}
-
-async function loadMessages(
-	chatId: string,
-	limit: number
-): Promise<UIMessage[]> {
-	const raw = await redis.get(chatKey(chatId));
-	if (!raw) {
-		return [];
-	}
-
-	try {
-		const parsed = JSON.parse(raw as string);
-		const messages = Array.isArray(parsed) ? parsed : [];
-		return messages.slice(-limit);
-	} catch {
-		return [];
-	}
-}
-
 export const agentRouter = {
-	getMessages: protectedProcedure
-		.input(
-			z.object({
-				chatId: z.string(),
-				websiteId: z.string(),
-			})
-		)
-		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
-
-			const messages = await loadMessages(input.chatId, 50);
-
-			return {
-				success: true,
-				messages,
-			};
-		}),
-
 	addFeedback: protectedProcedure
 		.input(
 			z.object({

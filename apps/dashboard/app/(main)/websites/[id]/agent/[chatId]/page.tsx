@@ -1,7 +1,5 @@
-import type { UIMessage } from "ai";
 import { Suspense } from "react";
 import { ChatProvider } from "@/contexts/chat-context";
-import { getServerRPCClient } from "@/lib/orpc-server";
 import { AgentPageClient } from "../_components/agent-page-client";
 
 interface Props {
@@ -11,22 +9,8 @@ interface Props {
 export default async function AgentPage(props: Props) {
 	const { id, chatId } = await props.params;
 
-	let initialMessages: UIMessage[] = [];
-
-	try {
-		const rpcClient = await getServerRPCClient();
-		const chat = await rpcClient.agent.getMessages({ chatId, websiteId: id });
-		initialMessages = (chat?.messages ?? []) as UIMessage[];
-	} catch {
-		initialMessages = [];
-	}
-
 	return (
-		<ChatProvider
-			chatId={chatId}
-			initialMessages={initialMessages}
-			websiteId={id}
-		>
+		<ChatProvider chatId={chatId} websiteId={id}>
 			<Suspense fallback={<AgentPageSkeleton />}>
 				<AgentPageClient chatId={chatId} websiteId={id} />
 			</Suspense>

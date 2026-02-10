@@ -11,7 +11,6 @@ import {
 import { Elysia, t } from "elysia";
 import type { AgentConfig, AgentType } from "../ai/agents";
 import { createAgentConfig } from "../ai/agents";
-import { saveMessages } from "../ai/config/memory";
 import { captureError, record, setAttributes } from "../lib/tracing";
 import { validateWebsite } from "../lib/website-utils";
 
@@ -226,13 +225,6 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 
 					return result.toUIMessageStreamResponse({
 						originalMessages: validation.data,
-						onFinish: async ({ messages }) => {
-							try {
-								await saveMessages(chatId, messages);
-							} catch (saveError) {
-								console.error("[Agent] Failed to save messages:", saveError);
-							}
-						},
 					});
 				} catch (error) {
 					captureError(error, {
