@@ -3,6 +3,7 @@
   "module": "index.ts",
   "devDependencies": {
     "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "@babel/plugin-proposal-optional-chaining": "^7.21.0",
     "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@biomejs/biome": "^2.3.13",
@@ -45,6 +46,11 @@
     "email:dev": "dotenv -- sh -c 'cd packages/email && bun run dev'",
     "sdk:build": "turbo run build --filter @databuddy/sdk --filter @databuddy/cache",
     "dev:dashboard": "dotenv -- turbo dev --filter @databuddy/dashboard --filter @databuddy/api"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+      "bunx ultracite fix"
+    ]
   },
   "type": "module",
   "workspaces": {
