@@ -1,9 +1,9 @@
-import { websitesApi } from "@databuddy/auth";
 import { chQuery, db, eq, inArray, member, websites } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { protectedProcedure } from "../orpc";
+import { checkOrgPermission } from "../utils/auth";
 
 const insightsCache = createDrizzleCache({ redis, namespace: "insights" });
 const CACHE_TTL = 300;
@@ -393,7 +393,15 @@ const buildInsights = (
 
 export const insightsRouter = {
 	getSmartInsights: protectedProcedure
+		.route({
+			description: "Returns smart insights for organization or user workspaces.",
+			method: "POST",
+			path: "/insights/getSmartInsights",
+			summary: "Get smart insights",
+			tags: ["Insights"],
+		})
 		.input(z.object({ organizationId: z.string().optional() }).default({}))
+		.output(z.record(z.string(), z.unknown()))
 		.handler(({ context, input }) => {
 			const userId = context.user.id;
 			const cacheKey = `smart-insights:${userId}:${input.organizationId || ""}`;
@@ -410,29 +418,14 @@ export const insightsRouter = {
 					}>;
 
 					if (input.organizationId) {
-						try {
-							const { success } = await websitesApi.hasPermission({
-								headers: context.headers,
-								body: {
-									organizationId: input.organizationId,
-									permissions: { website: ["read"] },
-								},
-							});
-							if (!success) {
-								throw new ORPCError("FORBIDDEN", {
-									message: "Missing workspace permissions.",
-								});
-							}
-						} catch (error) {
-							if (error instanceof ORPCError) {
-								throw error;
-							}
-							throw new ORPCError("FORBIDDEN", {
-								message: "Missing workspace permissions.",
-							});
-						}
+						await checkOrgPermission(
+							context,
+							input.organizationId,
+							"website",
+							"read",
+							"Missing workspace permissions."
+						);
 
-						// Get websites for this workspace only
 						websitesList = await db.query.websites.findMany({
 							where: eq(websites.organizationId, input.organizationId),
 							columns: {
@@ -442,7 +435,6 @@ export const insightsRouter = {
 							},
 						});
 					} else {
-						// Get all websites from user's workspaces
 						const userMemberships = await db.query.member.findMany({
 							where: eq(member.userId, userId),
 							columns: { organizationId: true },

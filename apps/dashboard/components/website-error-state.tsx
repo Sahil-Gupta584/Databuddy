@@ -145,11 +145,11 @@ function getErrorType(error: unknown): {
 
 export function WebsiteErrorState({
 	error,
-	websiteId,
+	websiteId: _websiteId,
 	isDemoRoute = false,
 }: WebsiteErrorStateProps) {
 	const router = useRouter();
-	const { type, message, code } = getErrorType(error);
+	const { type, message } = getErrorType(error);
 
 	const _getErrorCode = () => {
 		switch (type) {

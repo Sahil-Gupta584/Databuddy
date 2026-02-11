@@ -1,4 +1,3 @@
-import { websitesApi } from "@databuddy/auth";
 import { chQuery, eq, inArray, member, websites } from "@databuddy/db";
 import type {
 	DailyUsageByTypeRow,
@@ -9,6 +8,7 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { logger } from "../lib/logger";
 import { protectedProcedure } from "../orpc";
+import { checkOrgPermission } from "../utils/auth";
 
 const DAYS_IN_MONTH = 30;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -144,38 +144,15 @@ const aggregateUsageData = (
 	};
 };
 
-const checkOrganizationPermission = async (
-	headers: Headers,
-	organizationId: string
-): Promise<void> => {
-	try {
-		const { success } = await websitesApi.hasPermission({
-			headers,
-			body: {
-				organizationId,
-				permissions: { website: ["read"] },
-			},
-		});
-
-		if (!success) {
-			throw new ORPCError("FORBIDDEN", {
-				message: "Missing organization permissions.",
-			});
-		}
-	} catch (error) {
-		// If it's already an ORPCError, re-throw it
-		if (error instanceof ORPCError) {
-			throw error;
-		}
-		// Otherwise, treat permission check failures as FORBIDDEN
-		throw new ORPCError("FORBIDDEN", {
-			message: "Missing organization permissions.",
-		});
-	}
-};
-
 export const billingRouter = {
 	getUsage: protectedProcedure
+		.route({
+			description: "Returns billing usage for organization or user workspaces.",
+			method: "POST",
+			path: "/billing/getUsage",
+			summary: "Get usage",
+			tags: ["Billing"],
+		})
 		.input(
 			z
 				.object({
@@ -185,6 +162,7 @@ export const billingRouter = {
 				})
 				.default({})
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context, input }) => {
 			const { startDate, endDate } =
 				input.startDate && input.endDate
@@ -194,7 +172,13 @@ export const billingRouter = {
 			const organizationId = normalizeOrganizationId(input.organizationId);
 
 			if (organizationId) {
-				await checkOrganizationPermission(context.headers, organizationId);
+				await checkOrgPermission(
+					context,
+					organizationId,
+					"website",
+					"read",
+					"Missing organization permissions."
+				);
 			}
 
 			try {

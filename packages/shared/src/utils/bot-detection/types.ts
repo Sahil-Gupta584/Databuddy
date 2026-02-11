@@ -7,45 +7,49 @@
 /**
  * Bot categories for classification
  */
-export enum BotCategory {
+export const BotCategory = {
 	/** AI training data collection bots (GPTBot, ClaudeBot, etc.) */
-	AI_CRAWLER = "ai_crawler",
+	AI_CRAWLER: "ai_crawler",
 
 	/** AI assistant user-facing bots (ChatGPT-User, Claude-User, etc.) */
-	AI_ASSISTANT = "ai_assistant",
+	AI_ASSISTANT: "ai_assistant",
 
 	/** Search engine bots (Googlebot, Bingbot, etc.) */
-	SEARCH_ENGINE = "search_engine",
+	SEARCH_ENGINE: "search_engine",
 
 	/** Social media preview/sharing bots (Twitter, Facebook, etc.) */
-	SOCIAL_MEDIA = "social_media",
+	SOCIAL_MEDIA: "social_media",
 
 	/** SEO and analytics tools (Ahrefs, Semrush, etc.) */
-	SEO_TOOL = "seo_tool",
+	SEO_TOOL: "seo_tool",
 
 	/** Uptime and monitoring services (Pingdom, UptimeRobot, etc.) */
-	MONITORING = "monitoring",
+	MONITORING: "monitoring",
 
 	/** Unknown or malicious scrapers */
-	SCRAPER = "scraper",
+	SCRAPER: "scraper",
 
 	/** Unidentified bot */
-	UNKNOWN_BOT = "unknown_bot",
-}
+	UNKNOWN_BOT: "unknown_bot",
+} as const;
+
+export type BotCategory = (typeof BotCategory)[keyof typeof BotCategory];
 
 /**
  * Actions to take when a bot is detected
  */
-export enum BotAction {
+export const BotAction = {
 	/** Allow the request and track as normal traffic */
-	ALLOW = "allow",
+	ALLOW: "allow",
 
 	/** Log to AI traffic table but don't count as pageview */
-	TRACK_ONLY = "track_only",
+	TRACK_ONLY: "track_only",
 
 	/** Reject the request and log to blocked traffic */
-	BLOCK = "block",
-}
+	BLOCK: "block",
+} as const;
+
+export type BotAction = (typeof BotAction)[keyof typeof BotAction];
 
 /**
  * Result of bot detection

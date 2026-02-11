@@ -133,8 +133,17 @@ const categorizeAutocompleteResults = (
 		.map((r) => r.value),
 });
 
+const autocompleteOutputSchema = z.record(z.string(), z.array(z.string()));
+
 export const autocompleteRouter = {
 	get: publicProcedure
+		.route({
+			description: "Returns autocomplete suggestions for analytics filters.",
+			method: "POST",
+			path: "/autocomplete/get",
+			summary: "Get autocomplete",
+			tags: ["Autocomplete"],
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -142,6 +151,7 @@ export const autocompleteRouter = {
 				endDate: z.string().optional(),
 			})
 		)
+		.output(autocompleteOutputSchema)
 		.handler(async ({ context, input }) => {
 			const { startDate, endDate } =
 				input.startDate && input.endDate

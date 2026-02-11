@@ -20,9 +20,23 @@ const exportInputSchema = z.object({
 		.optional(),
 });
 
+const exportOutputSchema = z.object({
+	filename: z.string(),
+	data: z.string(),
+	metadata: z.record(z.string(), z.unknown()),
+});
+
 export const exportRouter = {
 	download: protectedProcedure
+		.route({
+			description: "Downloads analytics export. Requires read permission.",
+			method: "POST",
+			path: "/export/download",
+			summary: "Download export",
+			tags: ["Export"],
+		})
 		.input(exportInputSchema)
+		.output(exportOutputSchema)
 		.handler(async ({ context, input }) => {
 			const { dates, error } = validateExportDateRange(
 				input.startDate,

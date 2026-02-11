@@ -9,8 +9,19 @@ const defaultPreferences = {
 	timeFormat: "h:mm a",
 } as const;
 
+const preferencesOutputSchema = z.record(z.string(), z.unknown());
+
 export const preferencesRouter = {
-	getUserPreferences: protectedProcedure.handler(async ({ context }) => {
+	getUserPreferences: protectedProcedure
+		.route({
+			description: "Returns user preferences.",
+			method: "POST",
+			path: "/preferences/getUserPreferences",
+			summary: "Get user preferences",
+			tags: ["Preferences"],
+		})
+		.output(preferencesOutputSchema)
+		.handler(async ({ context }) => {
 		let preferences = await context.db.query.userPreferences.findFirst({
 			where: eq(userPreferences.userId, context.user.id),
 		});
@@ -31,6 +42,13 @@ export const preferencesRouter = {
 	}),
 
 	updateUserPreferences: protectedProcedure
+		.route({
+			description: "Updates user preferences.",
+			method: "POST",
+			path: "/preferences/updateUserPreferences",
+			summary: "Update user preferences",
+			tags: ["Preferences"],
+		})
 		.input(
 			z.object({
 				timezone: z.string().optional(),
@@ -38,6 +56,7 @@ export const preferencesRouter = {
 				timeFormat: z.string().optional(),
 			})
 		)
+		.output(preferencesOutputSchema)
 		.handler(async ({ context, input }) => {
 			const now = new Date();
 

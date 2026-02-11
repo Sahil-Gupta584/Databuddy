@@ -14,6 +14,13 @@ const modeMap: Record<string, Mode> = {
 
 export const chatRouter = {
 	stream: protectedProcedure
+		.route({
+			description: "Streams AI chat/agent response for a website. Requires read permission.",
+			method: "POST",
+			path: "/chat/stream",
+			summary: "Stream chat",
+			tags: ["Chat"],
+		})
 		.input(
 			z.object({
 				conversationId: z.string().optional(),
@@ -28,14 +35,12 @@ export const chatRouter = {
 			})
 		)
 		.handler(async ({ context, input }) => {
-			// Validate and authorize website access
 			const website = await authorizeWebsiteAccess(
 				context,
 				input.websiteId,
 				"read"
 			);
 
-			// Convert UI messages to model messages
 			const uiMessages: UIMessage[] = input.messages.map((msg) => ({
 				id: randomUUIDv7(),
 				role: msg.role,
@@ -43,19 +48,13 @@ export const chatRouter = {
 			}));
 
 			const modelMessages = convertToModelMessages(uiMessages);
-
-			// Determine mode
 			const mode = input.model ? (modeMap[input.model] ?? "chat") : "chat";
-
-			// Get the stream
 			const stream = handleMessage(
 				modelMessages,
 				mode,
 				input.websiteId,
 				website.domain || ""
 			);
-
-			// Convert to event iterator for oRPC
 			return streamToEventIterator(stream);
 		}),
 };

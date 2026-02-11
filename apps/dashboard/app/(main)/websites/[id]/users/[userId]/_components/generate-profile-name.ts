@@ -105,15 +105,18 @@ const descriptors = [
 	"The Pioneer",
 ];
 
-// Simple hash function to convert string to number
+// Simple hash function to convert string to number (djb2-style, no bitwise)
 function hashString(str: string): number {
+	const mod = 2_147_483_647;
 	let hash = 0;
 	for (let i = 0; i < str.length; i++) {
 		const char = str.charCodeAt(i);
-		hash = (hash << 5) - hash + char;
-		hash &= hash; // Convert to 32bit integer
+		hash = (hash * 31 + char) % mod;
+		if (hash < 0) {
+			hash += mod;
+		}
 	}
-	return Math.abs(hash);
+	return hash;
 }
 
 export function generateProfileName(visitorId: string): string {

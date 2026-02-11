@@ -1,7 +1,7 @@
 import { getApiKeyFromHeader } from "@databuddy/api-keys/resolve";
 import { auth, type User } from "@databuddy/auth";
 import { and, db, eq, member } from "@databuddy/db";
-import { os as createOS } from "@orpc/server";
+import { os as createOS, ORPCError } from "@orpc/server";
 import { Autumn as autumn } from "autumn-js";
 import { baseErrors } from "./errors";
 import {
@@ -110,6 +110,20 @@ export const createRPCContext = async (opts: { headers: Headers }) => {
 };
 
 export type Context = Awaited<ReturnType<typeof createRPCContext>>;
+
+/**
+ * Throws UNAUTHORIZED if context.user is undefined.
+ * Use at the start of handlers that require session auth (not API key).
+ */
+export function requireUserId(context: Context): string {
+	const id = context.user?.id;
+	if (!id) {
+		throw new ORPCError("UNAUTHORIZED", {
+			message: "Session required for this operation",
+		});
+	}
+	return id;
+}
 
 /**
  * Base oRPC instance with context and type-safe errors.

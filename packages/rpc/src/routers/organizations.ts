@@ -1,4 +1,3 @@
-import { websitesApi } from "@databuddy/auth";
 import {
 	and,
 	db,
@@ -16,7 +15,7 @@ import { ORPCError } from "@orpc/server";
 import { Autumn as autumn } from "autumn-js";
 import { z } from "zod";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import { authorizeWebsiteAccess, checkOrgPermission } from "../utils/auth";
 
 /**
  * Gets the billing owner ID for the current context.
@@ -100,31 +99,27 @@ const updateAvatarSeedSchema = z.object({
 	seed: z.string().min(1, "Seed is required"),
 });
 
+const orgOutputSchema = z.record(z.string(), z.unknown());
+
 export const organizationsRouter = {
 	updateAvatarSeed: protectedProcedure
+		.route({
+			description: "Updates organization avatar seed. Requires org update permission.",
+			method: "POST",
+			path: "/organizations/updateAvatarSeed",
+			summary: "Update avatar seed",
+			tags: ["Organizations"],
+		})
 		.input(updateAvatarSeedSchema)
+		.output(z.object({ organization: orgOutputSchema }))
 		.handler(async ({ input, context }) => {
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: input.organizationId,
-						permissions: { organization: ["update"] },
-					},
-				});
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "You do not have permission to update this organization.",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message: "You do not have permission to update this organization.",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				input.organizationId,
+				"organization",
+				"update",
+				"You do not have permission to update this organization."
+			);
 
 			const [org] = await db
 				.select()
@@ -148,31 +143,23 @@ export const organizationsRouter = {
 		}),
 
 	getPendingInvitations: protectedProcedure
+		.route({
+			description: "Returns pending invitations for an organization.",
+			method: "POST",
+			path: "/organizations/getPendingInvitations",
+			summary: "Get pending invitations",
+			tags: ["Organizations"],
+		})
 		.input(getPendingInvitationsSchema)
+		.output(z.array(orgOutputSchema))
 		.handler(async ({ input, context }) => {
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: input.organizationId,
-						permissions: { organization: ["read"] },
-					},
-				});
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message:
-							"You do not have permission to view invitations for this organization.",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message:
-						"You do not have permission to view invitations for this organization.",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				input.organizationId,
+				"organization",
+				"read",
+				"You do not have permission to view invitations for this organization."
+			);
 
 			const [org] = await db
 				.select()
@@ -217,7 +204,16 @@ export const organizationsRouter = {
 			}
 		}),
 
-	getUserPendingInvitations: protectedProcedure.handler(async ({ context }) => {
+	getUserPendingInvitations: protectedProcedure
+		.route({
+			description: "Returns pending invitations for the current user.",
+			method: "POST",
+			path: "/organizations/getUserPendingInvitations",
+			summary: "Get user pending invitations",
+			tags: ["Organizations"],
+		})
+		.output(z.array(orgOutputSchema))
+		.handler(async ({ context }) => {
 		const pendingInvitations = await db
 			.select({
 				id: invitation.id,
@@ -245,7 +241,16 @@ export const organizationsRouter = {
 		return pendingInvitations;
 	}),
 
-	getUsage: protectedProcedure.handler(async ({ context }) => {
+	getUsage: protectedProcedure
+		.route({
+			description: "Returns Autumn usage for current user/workspace.",
+			method: "POST",
+			path: "/organizations/getUsage",
+			summary: "Get usage",
+			tags: ["Organizations"],
+		})
+		.output(z.record(z.string(), z.unknown()))
+		.handler(async ({ context }) => {
 		const activeOrgId = (
 			context.session as { activeOrganizationId?: string | null }
 		)?.activeOrganizationId;
@@ -286,7 +291,7 @@ export const organizationsRouter = {
 				canUserUpgrade,
 			};
 		} catch (error) {
-			console.error("Failed to check usage:", error);
+			logger.error({ error }, "Failed to check usage");
 			throw new ORPCError("INTERNAL_SERVER_ERROR", {
 				message: "Failed to retrieve usage data",
 				cause: error,
@@ -294,16 +299,15 @@ export const organizationsRouter = {
 		}
 	}),
 
-	/**
-	 * Get billing context for the current user/workspace/website.
-	 * Returns the correct plan based on workspace ownership.
-	 *
-	 * Priority:
-	 * 1. If websiteId is provided, use the workspace owner's plan
-	 * 2. If user is authenticated, use their workspace plan
-	 * 3. Otherwise, return free tier defaults
-	 */
 	getBillingContext: publicProcedure
+		.route({
+			description:
+				"Returns billing context for user/workspace/website. Priority: websiteId > user workspace > free tier.",
+			method: "POST",
+			path: "/organizations/getBillingContext",
+			summary: "Get billing context",
+			tags: ["Organizations"],
+		})
 		.input(
 			z
 				.object({
@@ -311,6 +315,7 @@ export const organizationsRouter = {
 				})
 				.optional()
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context, input }) => {
 			const isDev = process.env.NODE_ENV !== "production";
 			let customerId: string | null = null;

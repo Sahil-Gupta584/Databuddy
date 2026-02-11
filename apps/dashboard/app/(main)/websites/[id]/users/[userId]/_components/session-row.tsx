@@ -95,7 +95,7 @@ function getReferrerInfo(session: Session): SessionReferrer {
 
 function SessionRowInternal({
 	session,
-	index,
+	index: _index,
 	isExpanded,
 	onToggle,
 }: SessionRowProps) {

@@ -7,9 +7,11 @@ import {
 	flagsToTargetGroups,
 	inArray,
 	isNull,
+	member,
 	ne,
 	notDeleted,
 	targetGroups,
+	websites,
 	withTransaction,
 } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
@@ -176,10 +178,7 @@ const checkCircularDependency = async (
 		})
 		.from(flags)
 		.where(
-			and(
-				getScopeCondition(websiteId, organizationId, context?.user?.id),
-				isNull(flags.deletedAt)
-			)
+			and(getScopeCondition(websiteId, organizationId), isNull(flags.deletedAt))
 		);
 
 	const graph = new Map<string, string[]>();
@@ -254,69 +253,93 @@ function sanitizeFlagForDemo<T extends FlagWithTargetGroups>(flag: T): T {
 	};
 }
 
+const successOutputSchema = z.object({ success: z.literal(true) });
+
+const flagOutputSchema = z.record(z.string(), z.unknown());
+
 export const flagsRouter = {
-	list: publicProcedure.input(listFlagsSchema).handler(({ context, input }) => {
-		const scope = getScope(input.websiteId, input.organizationId);
-		const cacheKey = `list:${scope}:${input.status || "all"}`;
+	list: publicProcedure
+		.route({
+			description:
+				"Returns all flags for a website or organization. Requires scope read permission.",
+			method: "POST",
+			path: "/flags/list",
+			summary: "List flags",
+			tags: ["Flags"],
+		})
+		.input(listFlagsSchema)
+		.output(z.array(flagOutputSchema))
+		.handler(({ context, input }) => {
+			const scope = getScope(input.websiteId, input.organizationId);
+			const cacheKey = `list:${scope}:${input.status || "all"}`;
 
-		return flagsCache.withCache({
-			key: cacheKey,
-			ttl: CACHE_DURATION,
-			tables: ["flags", "flags_to_target_groups", "target_groups"],
-			queryFn: async () => {
-				await authorizeScope(
-					context,
-					input.websiteId,
-					input.organizationId,
-					"read"
-				);
+			return flagsCache.withCache({
+				key: cacheKey,
+				ttl: CACHE_DURATION,
+				tables: ["flags", "flags_to_target_groups", "target_groups"],
+				queryFn: async () => {
+					await authorizeScope(
+						context,
+						input.websiteId,
+						input.organizationId,
+						"read"
+					);
 
-				const conditions = [
-					isNull(flags.deletedAt),
-					getScopeCondition(input.websiteId, input.organizationId),
-				];
+					const conditions = [
+						isNull(flags.deletedAt),
+						getScopeCondition(input.websiteId, input.organizationId),
+					];
 
-				if (input.status) {
-					conditions.push(eq(flags.status, input.status));
-				}
+					if (input.status) {
+						conditions.push(eq(flags.status, input.status));
+					}
 
-				const flagsList = await context.db.query.flags.findMany({
-					where: and(...conditions),
-					orderBy: desc(flags.createdAt),
-					with: {
-						flagsToTargetGroups: {
-							with: {
-								targetGroup: true,
+					const flagsList = await context.db.query.flags.findMany({
+						where: and(...conditions),
+						orderBy: desc(flags.createdAt),
+						with: {
+							flagsToTargetGroups: {
+								with: {
+									targetGroup: true,
+								},
 							},
 						},
-					},
-				});
+					});
 
-				// Map the nested relations to flat targetGroups array
-				const mappedFlags = flagsList.map((flag) => ({
-					...flag,
-					targetGroups: flag.flagsToTargetGroups
-						.filter((ftg) => ftg.targetGroup && !ftg.targetGroup.deletedAt)
-						.map((ftg) => ftg.targetGroup),
-				}));
+					// Map the nested relations to flat targetGroups array
+					const mappedFlags = flagsList.map((flag) => ({
+						...flag,
+						targetGroups: flag.flagsToTargetGroups
+							.filter((ftg) => ftg.targetGroup && !ftg.targetGroup.deletedAt)
+							.map((ftg) => ftg.targetGroup),
+					}));
 
-				// Check if user is fully authorized
-				const isAuthorized = input.websiteId
-					? await isFullyAuthorized(context, input.websiteId)
-					: Boolean(context.user);
+					// Check if user is fully authorized
+					const isAuthorized = input.websiteId
+						? await isFullyAuthorized(context, input.websiteId)
+						: Boolean(context.user);
 
-				// Sanitize data for unauthorized/demo users
-				if (!isAuthorized) {
-					return mappedFlags.map((flag) => sanitizeFlagForDemo(flag));
-				}
+					// Sanitize data for unauthorized/demo users
+					if (!isAuthorized) {
+						return mappedFlags.map((flag) => sanitizeFlagForDemo(flag));
+					}
 
-				return mappedFlags;
-			},
-		});
-	}),
+					return mappedFlags;
+				},
+			});
+		}),
 
 	getById: publicProcedure
+		.route({
+			description:
+				"Returns a single flag by id. Requires scope read permission.",
+			method: "POST",
+			path: "/flags/getById",
+			summary: "Get flag by ID",
+			tags: ["Flags"],
+		})
 		.input(getFlagSchema)
+		.output(flagOutputSchema)
 		.handler(async ({ context, input }) => {
 			const scope = getScope(input.websiteId, input.organizationId);
 			const authContext = await getCacheAuthContext(context, {
@@ -382,7 +405,16 @@ export const flagsRouter = {
 		}),
 
 	getByKey: publicProcedure
+		.route({
+			description:
+				"Returns a single active flag by key. Requires scope read permission.",
+			method: "POST",
+			path: "/flags/getByKey",
+			summary: "Get flag by key",
+			tags: ["Flags"],
+		})
 		.input(getFlagByKeySchema)
+		.output(flagOutputSchema)
 		.handler(async ({ context, input }) => {
 			const scope = getScope(input.websiteId, input.organizationId);
 			const authContext = await getCacheAuthContext(context, {
@@ -449,7 +481,16 @@ export const flagsRouter = {
 		}),
 
 	create: protectedProcedure
+		.route({
+			description:
+				"Creates a new feature flag. Requires feature flags plan and scope update permission.",
+			method: "POST",
+			path: "/flags/create",
+			summary: "Create flag",
+			tags: ["Flags"],
+		})
 		.input(createFlagSchema)
+		.output(flagOutputSchema)
 		.handler(async ({ context, input }) => {
 			await authorizeScope(
 				context,
@@ -457,6 +498,49 @@ export const flagsRouter = {
 				input.organizationId,
 				"update"
 			);
+
+			let createdBy: string;
+			if (context.user) {
+				createdBy = context.user.id;
+			} else if (context.apiKey) {
+				const orgId =
+					input.organizationId ??
+					(input.websiteId
+						? (
+								await context.db
+									.select({ organizationId: websites.organizationId })
+									.from(websites)
+									.where(eq(websites.id, input.websiteId))
+									.limit(1)
+							)[0]?.organizationId
+						: null);
+				if (!orgId) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Scope must belong to a workspace",
+					});
+				}
+				const resolvedOrgId = context.apiKey.organizationId ?? orgId;
+				const [ownerRow] = await context.db
+					.select({ userId: member.userId })
+					.from(member)
+					.where(
+						and(
+							eq(member.organizationId, resolvedOrgId),
+							eq(member.role, "owner")
+						)
+					)
+					.limit(1);
+				if (!ownerRow) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Could not resolve organization owner for API key",
+					});
+				}
+				createdBy = ownerRow.userId;
+			} else {
+				throw new ORPCError("UNAUTHORIZED", {
+					message: "Authentication is required",
+				});
+			}
 
 			// Check if feature flags feature is available on the plan
 			requireFeature(context.billing?.planId, GATED_FEATURES.FEATURE_FLAGS);
@@ -467,11 +551,7 @@ export const flagsRouter = {
 				.from(flags)
 				.where(
 					and(
-						getScopeCondition(
-							input.websiteId,
-							input.organizationId,
-							context.user.id
-						),
+						getScopeCondition(input.websiteId, input.organizationId),
 						isNull(flags.deletedAt),
 						ne(flags.status, "archived")
 					)
@@ -499,11 +579,7 @@ export const flagsRouter = {
 				.where(
 					and(
 						inArray(flags.key, input.dependencies || []),
-						getScopeCondition(
-							input.websiteId,
-							input.organizationId,
-							context.user.id
-						),
+						getScopeCondition(input.websiteId, input.organizationId),
 						isNull(flags.deletedAt)
 					)
 				);
@@ -514,11 +590,7 @@ export const flagsRouter = {
 				.where(
 					and(
 						eq(flags.key, input.key),
-						getScopeCondition(
-							input.websiteId,
-							input.organizationId,
-							context.user.id
-						)
+						getScopeCondition(input.websiteId, input.organizationId)
 					)
 				)
 				.limit(1);
@@ -613,8 +685,8 @@ export const flagsRouter = {
 						websiteId: input.websiteId || null,
 						organizationId: input.organizationId || null,
 						environment: input.environment || existingFlag?.[0]?.environment,
-						userId: input.websiteId ? null : context.user.id,
-						createdBy: context.user.id,
+						userId: null,
+						createdBy,
 					})
 					.returning();
 
@@ -658,7 +730,16 @@ export const flagsRouter = {
 		}),
 
 	update: protectedProcedure
+		.route({
+			description:
+				"Updates an existing flag. Requires scope update permission.",
+			method: "POST",
+			path: "/flags/update",
+			summary: "Update flag",
+			tags: ["Flags"],
+		})
 		.input(updateFlagSchema)
+		.output(flagOutputSchema)
 		.handler(async ({ context, input }) => {
 			const existingFlag = await context.db
 				.select()
@@ -678,9 +759,9 @@ export const flagsRouter = {
 				await authorizeWebsiteAccess(context, flag.websiteId, "update");
 			} else if (flag.organizationId) {
 				await authorizeScope(context, undefined, flag.organizationId, "update");
-			} else if (flag.userId && flag.userId !== context.user.id) {
+			} else {
 				throw new ORPCError("FORBIDDEN", {
-					message: "Not authorized to update this flag",
+					message: "Flags must be scoped to a website or organization",
 				});
 			}
 
@@ -697,8 +778,7 @@ export const flagsRouter = {
 						and(
 							getScopeCondition(
 								flag.websiteId || undefined,
-								flag.organizationId || undefined,
-								context.user.id
+								flag.organizationId || undefined
 							),
 							isNull(flags.deletedAt),
 							ne(flags.status, "archived")
@@ -731,8 +811,7 @@ export const flagsRouter = {
 						inArray(flags.key, input.dependencies || []),
 						getScopeCondition(
 							flag.websiteId || undefined,
-							flag.organizationId || undefined,
-							context.user.id
+							flag.organizationId || undefined
 						),
 						isNull(flags.deletedAt)
 					)
@@ -805,22 +884,27 @@ export const flagsRouter = {
 
 			// Handle cascading status changes for dependent flags
 			if (flag.status !== updatedFlag.status) {
-				await handleFlagUpdateDependencyCascading({
-					updatedFlag,
-					userId: context.user.id,
-				});
+				await handleFlagUpdateDependencyCascading({ updatedFlag });
 			}
 			return updatedFlag;
 		}),
 
 	delete: protectedProcedure
+		.route({
+			description:
+				"Soft-deletes a flag (archives it). Requires scope delete permission.",
+			method: "POST",
+			path: "/flags/delete",
+			summary: "Delete flag",
+			tags: ["Flags"],
+		})
 		.input(z.object({ id: z.string() }))
+		.output(successOutputSchema)
 		.handler(async ({ context, input }) => {
 			const existingFlag = await context.db
 				.select({
-					websiteId: flags.websiteId,
 					organizationId: flags.organizationId,
-					userId: flags.userId,
+					websiteId: flags.websiteId,
 				})
 				.from(flags)
 				.where(and(eq(flags.id, input.id), isNull(flags.deletedAt)))
@@ -838,9 +922,9 @@ export const flagsRouter = {
 				await authorizeWebsiteAccess(context, flag.websiteId, "delete");
 			} else if (flag.organizationId) {
 				await authorizeScope(context, undefined, flag.organizationId, "delete");
-			} else if (flag.userId && flag.userId !== context.user.id) {
+			} else {
 				throw new ORPCError("FORBIDDEN", {
-					message: "Not authorized to delete this flag",
+					message: "Flags must be scoped to a website or organization",
 				});
 			}
 

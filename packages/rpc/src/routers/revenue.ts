@@ -60,9 +60,19 @@ async function hasManagePermission(
 	}
 }
 
+const revenueOutputSchema = z.record(z.string(), z.unknown());
+
 export const revenueRouter = {
 	get: protectedProcedure
+		.route({
+			description: "Returns revenue config for website or org. Requires configure permission.",
+			method: "POST",
+			path: "/revenue/get",
+			summary: "Get revenue config",
+			tags: ["Revenue"],
+		})
 		.input(z.object({ websiteId: z.string().optional() }))
+		.output(revenueOutputSchema.nullable())
 		.handler(async ({ context, input }) => {
 			const ownerId = await getOwnerId(context, input.websiteId);
 
@@ -103,6 +113,13 @@ export const revenueRouter = {
 		}),
 
 	upsert: protectedProcedure
+		.route({
+			description: "Creates or updates revenue config. Requires configure permission.",
+			method: "POST",
+			path: "/revenue/upsert",
+			summary: "Upsert revenue config",
+			tags: ["Revenue"],
+		})
 		.input(
 			z.object({
 				websiteId: z.string().optional(),
@@ -111,6 +128,7 @@ export const revenueRouter = {
 				currency: z.string().length(3).optional(),
 			})
 		)
+		.output(revenueOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const ownerId = await getOwnerId(context, input.websiteId);
 
@@ -178,7 +196,15 @@ export const revenueRouter = {
 		}),
 
 	regenerateHash: protectedProcedure
+		.route({
+			description: "Regenerates webhook hash. Requires configure permission.",
+			method: "POST",
+			path: "/revenue/regenerateHash",
+			summary: "Regenerate hash",
+			tags: ["Revenue"],
+		})
 		.input(z.object({ websiteId: z.string().optional() }))
+		.output(z.object({ webhookHash: z.string() }))
 		.handler(async ({ context, input, errors }) => {
 			const ownerId = await getOwnerId(context, input.websiteId);
 
@@ -213,7 +239,15 @@ export const revenueRouter = {
 		}),
 
 	delete: protectedProcedure
+		.route({
+			description: "Deletes revenue config. Requires configure permission.",
+			method: "POST",
+			path: "/revenue/delete",
+			summary: "Delete revenue config",
+			tags: ["Revenue"],
+		})
 		.input(z.object({ websiteId: z.string().optional() }))
+		.output(z.object({ deleted: z.literal(true) }))
 		.handler(async ({ context, input, errors }) => {
 			const ownerId = await getOwnerId(context, input.websiteId);
 

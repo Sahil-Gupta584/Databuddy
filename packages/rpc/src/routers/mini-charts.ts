@@ -178,12 +178,20 @@ const getBatchedMiniChartData = async (
 
 export const miniChartsRouter = {
 	getMiniCharts: protectedProcedure
+		.route({
+			description: "Returns mini chart data for authorized websites.",
+			method: "POST",
+			path: "/mini-charts/getMiniCharts",
+			summary: "Get mini charts",
+			tags: ["Mini Charts"],
+		})
 		.input(
 			z.object({
 				websiteIds: z.array(z.string().min(1).max(64)).min(1).max(5000),
 				days: z.number().int().optional(),
 			})
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(({ context, input }) => {
 			const normalizedIds = normalizeWebsiteIds(input.websiteIds);
 			const requestedDays = input.days ?? DEFAULT_DAYS;

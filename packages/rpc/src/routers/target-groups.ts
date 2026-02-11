@@ -4,6 +4,7 @@ import {
 	eq,
 	flagsToTargetGroups,
 	isNull,
+	member,
 	targetGroups,
 } from "@databuddy/db";
 import {
@@ -63,6 +64,10 @@ const deleteSchema = z.object({
 	id: z.string(),
 });
 
+const targetGroupOutputSchema = z.record(z.string(), z.unknown());
+
+const successOutputSchema = z.object({ success: z.literal(true) });
+
 interface TargetGroupWithRules {
 	rules?: unknown;
 	[key: string]: unknown;
@@ -81,42 +86,65 @@ function sanitizeGroupForDemo<T extends TargetGroupWithRules>(group: T): T {
 }
 
 export const targetGroupsRouter = {
-	list: publicProcedure.input(listSchema).handler(({ context, input }) => {
-		const cacheKey = `list:website:${input.websiteId}`;
+	list: publicProcedure
+		.route({
+			description:
+				"Returns all target groups for a website. Requires website read permission.",
+			method: "POST",
+			path: "/target-groups/list",
+			summary: "List target groups",
+			tags: ["Target Groups"],
+		})
+		.input(listSchema)
+		.output(z.array(targetGroupOutputSchema))
+		.handler(({ context, input }) => {
+			const cacheKey = `list:website:${input.websiteId}`;
 
-		return targetGroupsCache.withCache({
-			key: cacheKey,
-			ttl: CACHE_DURATION,
-			tables: ["target_groups"],
-			queryFn: async () => {
-				await authorizeWebsiteAccess(context, input.websiteId, "read");
+			return targetGroupsCache.withCache({
+				key: cacheKey,
+				ttl: CACHE_DURATION,
+				tables: ["target_groups"],
+				queryFn: async () => {
+					await authorizeWebsiteAccess(context, input.websiteId, "read");
 
-				const groupsList = await context.db
-					.select()
-					.from(targetGroups)
-					.where(
-						and(
-							eq(targetGroups.websiteId, input.websiteId),
-							isNull(targetGroups.deletedAt)
+					const groupsList = await context.db
+						.select()
+						.from(targetGroups)
+						.where(
+							and(
+								eq(targetGroups.websiteId, input.websiteId),
+								isNull(targetGroups.deletedAt)
+							)
 						)
-					)
-					.orderBy(desc(targetGroups.createdAt));
+						.orderBy(desc(targetGroups.createdAt));
 
-				// Check if user is fully authorized
-				const isAuthorized = await isFullyAuthorized(context, input.websiteId);
+					// Check if user is fully authorized
+					const isAuthorized = await isFullyAuthorized(
+						context,
+						input.websiteId
+					);
 
-				// Sanitize data for unauthorized/demo users
-				if (!isAuthorized) {
-					return groupsList.map((group) => sanitizeGroupForDemo(group));
-				}
+					// Sanitize data for unauthorized/demo users
+					if (!isAuthorized) {
+						return groupsList.map((group) => sanitizeGroupForDemo(group));
+					}
 
-				return groupsList;
-			},
-		});
-	}),
+					return groupsList;
+				},
+			});
+		}),
 
 	getById: publicProcedure
+		.route({
+			description:
+				"Returns a single target group by id. Requires website read permission.",
+			method: "POST",
+			path: "/target-groups/getById",
+			summary: "Get target group",
+			tags: ["Target Groups"],
+		})
 		.input(getByIdSchema)
+		.output(targetGroupOutputSchema)
 		.handler(async ({ context, input }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 
@@ -162,9 +190,51 @@ export const targetGroupsRouter = {
 		}),
 
 	create: protectedProcedure
+		.route({
+			description:
+				"Creates a new target group. Requires target groups feature and website update permission.",
+			method: "POST",
+			path: "/target-groups/create",
+			summary: "Create target group",
+			tags: ["Target Groups"],
+		})
 		.input(createSchema)
+		.output(targetGroupOutputSchema)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "update");
+			const website = await authorizeWebsiteAccess(
+				context,
+				input.websiteId,
+				"update"
+			);
+
+			let createdBy: string;
+			if (context.user) {
+				createdBy = context.user.id;
+			} else if (context.apiKey) {
+				if (!website.organizationId) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Website must belong to a workspace",
+					});
+				}
+				const orgId = context.apiKey.organizationId ?? website.organizationId;
+				const [ownerRow] = await context.db
+					.select({ userId: member.userId })
+					.from(member)
+					.where(
+						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
+					)
+					.limit(1);
+				if (!ownerRow) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Could not resolve organization owner for API key",
+					});
+				}
+				createdBy = ownerRow.userId;
+			} else {
+				throw new ORPCError("UNAUTHORIZED", {
+					message: "Authentication is required",
+				});
+			}
 
 			// Check if target groups feature is available on the plan
 			requireFeature(context.billing?.planId, GATED_FEATURES.TARGET_GROUPS);
@@ -196,7 +266,7 @@ export const targetGroupsRouter = {
 					color: input.color,
 					rules: input.rules,
 					websiteId: input.websiteId,
-					createdBy: context.user.id,
+					createdBy,
 				})
 				.returning();
 
@@ -206,7 +276,16 @@ export const targetGroupsRouter = {
 		}),
 
 	update: protectedProcedure
+		.route({
+			description:
+				"Updates an existing target group. Requires website update permission.",
+			method: "POST",
+			path: "/target-groups/update",
+			summary: "Update target group",
+			tags: ["Target Groups"],
+		})
 		.input(updateSchema)
+		.output(targetGroupOutputSchema)
 		.handler(async ({ context, input }) => {
 			const existingGroup = await context.db
 				.select()
@@ -245,7 +324,16 @@ export const targetGroupsRouter = {
 		}),
 
 	delete: protectedProcedure
+		.route({
+			description:
+				"Soft-deletes a target group. Requires website delete permission.",
+			method: "POST",
+			path: "/target-groups/delete",
+			summary: "Delete target group",
+			tags: ["Target Groups"],
+		})
 		.input(deleteSchema)
+		.output(successOutputSchema)
 		.handler(async ({ context, input }) => {
 			const existingGroup = await context.db
 				.select()

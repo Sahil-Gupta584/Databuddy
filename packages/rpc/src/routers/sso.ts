@@ -1,35 +1,30 @@
-import { websitesApi } from "@databuddy/auth";
 import { desc, eq, ssoProvider } from "@databuddy/db";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { protectedProcedure } from "../orpc";
+import { checkOrgPermission } from "../utils/auth";
+
+const ssoOutputSchema = z.record(z.string(), z.unknown());
 
 export const ssoRouter = {
 	list: protectedProcedure
+		.route({
+			description: "Returns SSO providers for an organization.",
+			method: "POST",
+			path: "/sso/list",
+			summary: "List SSO providers",
+			tags: ["SSO"],
+		})
 		.input(z.object({ organizationId: z.string() }))
+		.output(z.array(ssoOutputSchema))
 		.handler(async ({ context, input }) => {
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: input.organizationId,
-						permissions: { organization: ["read"] },
-					},
-				});
-
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "You do not have permission to access this organization",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message: "You do not have permission to access this organization",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				input.organizationId,
+				"organization",
+				"read",
+				"You do not have permission to access this organization"
+			);
 
 			const providers = await context.db
 				.select()
@@ -50,7 +45,15 @@ export const ssoRouter = {
 		}),
 
 	getById: protectedProcedure
+		.route({
+			description: "Returns an SSO provider by id.",
+			method: "POST",
+			path: "/sso/getById",
+			summary: "Get SSO provider",
+			tags: ["SSO"],
+		})
 		.input(z.object({ providerId: z.string() }))
+		.output(ssoOutputSchema.nullable())
 		.handler(async ({ context, input }) => {
 			const provider = await context.db.query.ssoProvider.findFirst({
 				where: eq(ssoProvider.providerId, input.providerId),
@@ -66,28 +69,13 @@ export const ssoRouter = {
 				});
 			}
 
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: provider.organizationId,
-						permissions: { organization: ["read"] },
-					},
-				});
-
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "You do not have permission to access this SSO provider",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message: "You do not have permission to access this SSO provider",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				provider.organizationId,
+				"organization",
+				"read",
+				"You do not have permission to access this SSO provider"
+			);
 
 			return {
 				id: provider.id,
@@ -102,7 +90,15 @@ export const ssoRouter = {
 		}),
 
 	delete: protectedProcedure
+		.route({
+			description: "Deletes an SSO provider. Requires org update permission.",
+			method: "POST",
+			path: "/sso/delete",
+			summary: "Delete SSO provider",
+			tags: ["SSO"],
+		})
 		.input(z.object({ providerId: z.string() }))
+		.output(z.object({ success: z.literal(true) }))
 		.handler(async ({ context, input }) => {
 			const provider = await context.db.query.ssoProvider.findFirst({
 				where: eq(ssoProvider.providerId, input.providerId),
@@ -120,28 +116,13 @@ export const ssoRouter = {
 				});
 			}
 
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: provider.organizationId,
-						permissions: { organization: ["update"] },
-					},
-				});
-
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "You do not have permission to delete this SSO provider",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message: "You do not have permission to delete this SSO provider",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				provider.organizationId,
+				"organization",
+				"update",
+				"You do not have permission to delete this SSO provider"
+			);
 
 			await context.db
 				.delete(ssoProvider)

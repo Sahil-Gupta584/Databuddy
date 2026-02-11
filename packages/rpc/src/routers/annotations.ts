@@ -5,10 +5,12 @@ import {
 	desc,
 	eq,
 	isNull,
+	member,
 	or,
 	type SQL,
 } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
+import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 import type { Context } from "../orpc";
@@ -23,10 +25,11 @@ const annotationsCache = createDrizzleCache({
 const CACHE_TTL = 300; // 5 minutes
 
 /**
- * Check if a user has update permission for a website (workspace membership check)
+ * Check if the current identity has update permission for a website (workspace membership check).
+ * Uses headers for auth (session or API key).
  */
 async function hasWebsiteUpdatePermission(
-	context: Context & { user: NonNullable<Context["user"]> },
+	context: Context,
 	website: { organizationId: string | null }
 ): Promise<boolean> {
 	if (!website.organizationId) {
@@ -65,9 +68,37 @@ const chartContextSchema = z.object({
 	tabId: z.string().optional(),
 });
 
+const annotationOutputSchema = z.object({
+	annotationType: z.string(),
+	chartContext: z.unknown(),
+	chartType: z.string(),
+	color: z.string(),
+	createdAt: z.date(),
+	createdBy: z.string(),
+	deletedAt: z.date().nullable(),
+	id: z.string(),
+	isPublic: z.boolean(),
+	tags: z.array(z.string()).nullable(),
+	text: z.string(),
+	updatedAt: z.date(),
+	websiteId: z.string(),
+	xEndValue: z.date().nullable(),
+	xValue: z.date(),
+	yValue: z.number().nullable(),
+});
+
+const successOutputSchema = z.object({ success: z.literal(true) });
+
 export const annotationsRouter = {
-	// List annotations for a chart context
 	list: publicProcedure
+		.route({
+			description:
+				"Returns annotations for a chart context. Requires website read permission.",
+			method: "POST",
+			path: "/annotations/list",
+			summary: "List annotations",
+			tags: ["Annotations"],
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -75,6 +106,7 @@ export const annotationsRouter = {
 				chartContext: chartContextSchema,
 			})
 		)
+		.output(z.array(annotationOutputSchema))
 		.handler(async ({ context, input }) => {
 			const authContext = await getCacheAuthContext(context, {
 				websiteId: input.websiteId,
@@ -109,6 +141,9 @@ export const annotationsRouter = {
 								eq(annotations.isPublic, true),
 								eq(annotations.createdBy, context.user.id)
 							);
+						} else if (context.apiKey) {
+							// API key has org access, show all
+							visibilityCondition = undefined;
 						} else {
 							// Unauthenticated users on public websites only see public annotations
 							visibilityCondition = eq(annotations.isPublic, true);
@@ -128,9 +163,17 @@ export const annotationsRouter = {
 			});
 		}),
 
-	// Get annotation by ID
 	getById: publicProcedure
+		.route({
+			description:
+				"Returns a single annotation by id. Requires website read permission.",
+			method: "POST",
+			path: "/annotations/getById",
+			summary: "Get annotation",
+			tags: ["Annotations"],
+		})
 		.input(z.object({ id: z.string() }))
+		.output(annotationOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const annotation = await context.db.query.annotations.findFirst({
 				where: and(eq(annotations.id, input.id), isNull(annotations.deletedAt)),
@@ -186,8 +229,15 @@ export const annotationsRouter = {
 			});
 		}),
 
-	// Create annotation
 	create: protectedProcedure
+		.route({
+			description:
+				"Creates a new annotation. Requires website update permission.",
+			method: "POST",
+			path: "/annotations/create",
+			summary: "Create annotation",
+			tags: ["Annotations"],
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -203,6 +253,7 @@ export const annotationsRouter = {
 				isPublic: z.boolean().default(false),
 			})
 		)
+		.output(annotationOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const website = await authorizeWebsiteAccess(
 				context,
@@ -210,7 +261,7 @@ export const annotationsRouter = {
 				"update"
 			);
 
-			if (website.isPublic) {
+			if (website.isPublic && context.user) {
 				const hasPermission = await hasWebsiteUpdatePermission(
 					context,
 					website
@@ -221,6 +272,35 @@ export const annotationsRouter = {
 							"You cannot create annotations on public websites unless you own them",
 					});
 				}
+			}
+
+			let createdBy: string;
+			if (context.user) {
+				createdBy = context.user.id;
+			} else if (context.apiKey) {
+				if (!website.organizationId) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Website must belong to a workspace",
+					});
+				}
+				const orgId = context.apiKey.organizationId ?? website.organizationId;
+				const [ownerRow] = await context.db
+					.select({ userId: member.userId })
+					.from(member)
+					.where(
+						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
+					)
+					.limit(1);
+				if (!ownerRow) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Could not resolve organization owner for API key",
+					});
+				}
+				createdBy = ownerRow.userId;
+			} else {
+				throw new ORPCError("UNAUTHORIZED", {
+					message: "Authentication is required",
+				});
 			}
 
 			const annotationId = randomUUIDv7();
@@ -239,7 +319,7 @@ export const annotationsRouter = {
 					tags: input.tags || [],
 					color: input.color || "#3B82F6",
 					isPublic: input.isPublic,
-					createdBy: context.user.id,
+					createdBy,
 				})
 				.returning();
 
@@ -248,8 +328,15 @@ export const annotationsRouter = {
 			return newAnnotation;
 		}),
 
-	// Update annotation
 	update: protectedProcedure
+		.route({
+			description:
+				"Updates an annotation. Users can only update their own unless they own the website.",
+			method: "POST",
+			path: "/annotations/update",
+			summary: "Update annotation",
+			tags: ["Annotations"],
+		})
 		.input(
 			z.object({
 				id: z.string(),
@@ -259,8 +346,8 @@ export const annotationsRouter = {
 				isPublic: z.boolean().optional(),
 			})
 		)
+		.output(annotationOutputSchema)
 		.handler(async ({ context, input, errors }) => {
-			// First verify the annotation exists and get website ID
 			const existingAnnotation = await context.db
 				.select()
 				.from(annotations)
@@ -276,17 +363,25 @@ export const annotationsRouter = {
 
 			const annotation = existingAnnotation[0];
 
-			// Users can only update their own annotations, unless they own the website
+			// Users can only update their own annotations, unless they own the website.
+			// API keys have org access so they are treated as having permission.
 			const website = await authorizeWebsiteAccess(
 				context,
 				annotation.websiteId,
 				"read"
 			);
 
-			const hasPermission = await hasWebsiteUpdatePermission(context, website);
+			const hasPermission = context.apiKey
+				? true
+				: context.user
+					? await hasWebsiteUpdatePermission(context, website)
+					: false;
 
-			// If user doesn't own website, they can only update their own annotations
-			if (!hasPermission && annotation.createdBy !== context.user.id) {
+			if (
+				!hasPermission &&
+				context.user &&
+				annotation.createdBy !== context.user.id
+			) {
 				throw errors.FORBIDDEN({
 					message: "You can only update your own annotations",
 				});
@@ -306,9 +401,17 @@ export const annotationsRouter = {
 			return updatedAnnotation;
 		}),
 
-	// Delete annotation (soft delete)
 	delete: protectedProcedure
+		.route({
+			description:
+				"Soft-deletes an annotation. Users can only delete their own unless they own the website.",
+			method: "POST",
+			path: "/annotations/delete",
+			summary: "Delete annotation",
+			tags: ["Annotations"],
+		})
 		.input(z.object({ id: z.string() }))
+		.output(successOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			// First verify the annotation exists and get website ID
 			const existingAnnotation = await context.db
@@ -326,17 +429,25 @@ export const annotationsRouter = {
 
 			const annotation = existingAnnotation[0];
 
-			// Users can only delete their own annotations, unless they own the website
+			// Users can only delete their own annotations, unless they own the website.
+			// API keys have org access so they are treated as having permission.
 			const website = await authorizeWebsiteAccess(
 				context,
 				annotation.websiteId,
 				"read"
 			);
 
-			const hasPermission = await hasWebsiteUpdatePermission(context, website);
+			const hasPermission = context.apiKey
+				? true
+				: context.user
+					? await hasWebsiteUpdatePermission(context, website)
+					: false;
 
-			// If user doesn't own website, they can only delete their own annotations
-			if (!hasPermission && annotation.createdBy !== context.user.id) {
+			if (
+				!hasPermission &&
+				context.user &&
+				annotation.createdBy !== context.user.id
+			) {
 				throw errors.FORBIDDEN({
 					message: "You can only delete your own annotations",
 				});

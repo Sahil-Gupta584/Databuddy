@@ -121,7 +121,9 @@ export function getMessagesFromLocal(
 	chatId: string
 ): UIMessage[] {
 	const raw = safeGetItem(messagesKey(websiteId, chatId));
-	if (!raw) return [];
+	if (!raw) {
+		return [];
+	}
 	try {
 		const parsed = JSON.parse(raw) as UIMessage[];
 		return Array.isArray(parsed) ? parsed : [];
@@ -135,7 +137,9 @@ export function saveMessagesToLocal(
 	chatId: string,
 	messages: UIMessage[]
 ): void {
-	if (!(chatId && Array.isArray(messages))) return;
+	if (!(chatId && Array.isArray(messages))) {
+		return;
+	}
 	try {
 		safeSetItem(messagesKey(websiteId, chatId), JSON.stringify(messages));
 	} catch {

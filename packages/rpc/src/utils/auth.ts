@@ -7,6 +7,32 @@ import type { Context } from "../orpc";
 
 type Permission = "read" | "update" | "delete" | "transfer";
 
+export async function checkOrgPermission(
+	ctx: Pick<Context, "headers">,
+	organizationId: string,
+	resource: "website" | "organization",
+	permission: string,
+	message = "Missing permissions."
+): Promise<void> {
+	try {
+		const { success } = await websitesApi.hasPermission({
+			headers: ctx.headers,
+			body: {
+				organizationId,
+				permissions: { [resource]: [permission] },
+			},
+		});
+		if (!success) {
+			throw new ORPCError("FORBIDDEN", { message });
+		}
+	} catch (error) {
+		if (error instanceof ORPCError) {
+			throw error;
+		}
+		throw new ORPCError("FORBIDDEN", { message });
+	}
+}
+
 const getWebsiteById = cacheable(
 	async (id: string) => {
 		try {
@@ -76,7 +102,8 @@ export async function authorizeWebsiteAccess(
 		return website;
 	}
 
-	if (!ctx.user) {
+	const isAuthenticated = Boolean(ctx.user ?? ctx.apiKey);
+	if (!isAuthenticated) {
 		throw new ORPCError("UNAUTHORIZED", {
 			message: "Authentication is required for this action",
 		});

@@ -1,6 +1,7 @@
-import { and, desc, eq, goals, inArray, isNull } from "@databuddy/db";
+import { and, desc, eq, goals, inArray, isNull, member } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
+import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 import {
@@ -23,6 +24,24 @@ const filterSchema = z.object({
 });
 
 type Filter = z.infer<typeof filterSchema>;
+
+const goalOutputSchema = z.object({
+	id: z.string(),
+	websiteId: z.string(),
+	type: z.enum(["PAGE_VIEW", "EVENT", "CUSTOM"]),
+	target: z.string(),
+	name: z.string(),
+	description: z.string().nullable(),
+	filters: z.array(filterSchema).nullable(),
+	ignoreHistoricData: z.boolean(),
+	isActive: z.boolean(),
+	createdBy: z.string(),
+	createdAt: z.date(),
+	updatedAt: z.date(),
+	deletedAt: z.date().nullable(),
+});
+
+const successOutputSchema = z.object({ success: z.literal(true) });
 
 const getDefaultDateRange = () => {
 	const endDate = new Date().toISOString().split("T")[0];
@@ -49,7 +68,16 @@ const getEffectiveStartDate = (
 
 export const goalsRouter = {
 	list: publicProcedure
+		.route({
+			method: "POST",
+			path: "/goals/list",
+			tags: ["Goals"],
+			summary: "List goals",
+			description:
+				"Returns all goals for a website. Requires website read permission.",
+		})
 		.input(z.object({ websiteId: z.string() }))
+		.output(z.array(goalOutputSchema))
 		.handler(async ({ context, input }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 			return context.db
@@ -62,7 +90,16 @@ export const goalsRouter = {
 		}),
 
 	getById: publicProcedure
+		.route({
+			method: "POST",
+			path: "/goals/getById",
+			tags: ["Goals"],
+			summary: "Get goal",
+			description:
+				"Returns a single goal by id. Requires website read permission.",
+		})
 		.input(z.object({ id: z.string(), websiteId: z.string() }))
+		.output(goalOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 			const [goal] = await context.db
@@ -87,6 +124,14 @@ export const goalsRouter = {
 		}),
 
 	create: protectedProcedure
+		.route({
+			method: "POST",
+			path: "/goals/create",
+			tags: ["Goals"],
+			summary: "Create goal",
+			description:
+				"Creates a new conversion goal. Requires goals feature and website update permission.",
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -98,8 +143,13 @@ export const goalsRouter = {
 				ignoreHistoricData: z.boolean().optional(),
 			})
 		)
+		.output(goalOutputSchema)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "update");
+			const website = await authorizeWebsiteAccess(
+				context,
+				input.websiteId,
+				"update"
+			);
 
 			// Check if goals feature is available on the plan
 			requireFeature(context.billing?.planId, GATED_FEATURES.GOALS);
@@ -119,6 +169,35 @@ export const goalsRouter = {
 				existingGoals.length
 			);
 
+			let createdBy: string;
+			if (context.user) {
+				createdBy = context.user.id;
+			} else if (context.apiKey) {
+				if (!website.organizationId) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Website must belong to a workspace",
+					});
+				}
+				const orgId = context.apiKey.organizationId ?? website.organizationId;
+				const [ownerRow] = await context.db
+					.select({ userId: member.userId })
+					.from(member)
+					.where(
+						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
+					)
+					.limit(1);
+				if (!ownerRow) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Could not resolve organization owner for API key",
+					});
+				}
+				createdBy = ownerRow.userId;
+			} else {
+				throw new ORPCError("UNAUTHORIZED", {
+					message: "Authentication is required",
+				});
+			}
+
 			const [newGoal] = await context.db
 				.insert(goals)
 				.values({
@@ -131,7 +210,7 @@ export const goalsRouter = {
 					filters: input.filters,
 					ignoreHistoricData: input.ignoreHistoricData ?? false,
 					isActive: true,
-					createdBy: context.user.id,
+					createdBy,
 				})
 				.returning();
 
@@ -139,6 +218,14 @@ export const goalsRouter = {
 		}),
 
 	update: protectedProcedure
+		.route({
+			method: "POST",
+			path: "/goals/update",
+			tags: ["Goals"],
+			summary: "Update goal",
+			description:
+				"Updates an existing goal. Requires website update permission.",
+		})
 		.input(
 			z.object({
 				id: z.string(),
@@ -151,6 +238,7 @@ export const goalsRouter = {
 				isActive: z.boolean().optional(),
 			})
 		)
+		.output(goalOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const [existingGoal] = await context.db
 				.select({ websiteId: goals.websiteId })
@@ -178,7 +266,15 @@ export const goalsRouter = {
 		}),
 
 	delete: protectedProcedure
+		.route({
+			method: "POST",
+			path: "/goals/delete",
+			tags: ["Goals"],
+			summary: "Delete goal",
+			description: "Soft-deletes a goal. Requires website delete permission.",
+		})
 		.input(z.object({ id: z.string() }))
+		.output(successOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const [existingGoal] = await context.db
 				.select({ websiteId: goals.websiteId })
@@ -204,6 +300,14 @@ export const goalsRouter = {
 		}),
 
 	getAnalytics: publicProcedure
+		.route({
+			method: "POST",
+			path: "/goals/getAnalytics",
+			tags: ["Goals"],
+			summary: "Get goal analytics",
+			description:
+				"Returns conversion analytics for a single goal. Requires website read permission.",
+		})
 		.input(
 			z.object({
 				goalId: z.string(),
@@ -212,6 +316,7 @@ export const goalsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context, input, errors }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 
@@ -283,6 +388,14 @@ export const goalsRouter = {
 		}),
 
 	bulkAnalytics: publicProcedure
+		.route({
+			method: "POST",
+			path: "/goals/bulkAnalytics",
+			tags: ["Goals"],
+			summary: "Get bulk goal analytics",
+			description:
+				"Returns conversion analytics for multiple goals. Requires website read permission.",
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -291,6 +404,7 @@ export const goalsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
+		.output(z.record(z.string(), z.any()))
 		.handler(async ({ context, input }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 

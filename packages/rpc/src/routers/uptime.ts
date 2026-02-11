@@ -1,4 +1,3 @@
-import { websitesApi } from "@databuddy/auth";
 import { and, db, eq, inArray, member, uptimeSchedules } from "@databuddy/db";
 import { logger } from "@databuddy/shared/logger";
 import { ORPCError } from "@orpc/server";
@@ -6,7 +5,10 @@ import { Client } from "@upstash/qstash";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 import { protectedProcedure } from "../orpc";
-import { authorizeUptimeScheduleAccess } from "../utils/auth";
+import {
+	authorizeUptimeScheduleAccess,
+	checkOrgPermission,
+} from "../utils/auth";
 
 const client = new Client({ token: process.env.UPSTASH_QSTASH_TOKEN });
 
@@ -83,9 +85,19 @@ function triggerInitialCheck(scheduleId: string) {
 		);
 }
 
+const scheduleOutputSchema = z.record(z.string(), z.unknown());
+
 export const uptimeRouter = {
 	getScheduleByWebsiteId: protectedProcedure
+		.route({
+			description: "Returns uptime schedule for a website.",
+			method: "POST",
+			path: "/uptime/getScheduleByWebsiteId",
+			summary: "Get schedule by website",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ websiteId: z.string() }))
+		.output(scheduleOutputSchema.nullable())
 		.handler(async ({ context, input }) => {
 			const schedule = await db.query.uptimeSchedules.findFirst({
 				where: eq(uptimeSchedules.websiteId, input.websiteId),
@@ -101,7 +113,14 @@ export const uptimeRouter = {
 			return schedule ?? null;
 		}),
 
-	listSchedules: protectedProcedure
+		listSchedules: protectedProcedure
+		.route({
+			description: "Returns uptime schedules for organization or all user workspaces.",
+			method: "POST",
+			path: "/uptime/listSchedules",
+			summary: "List schedules",
+			tags: ["Uptime"],
+		})
 		.input(
 			z
 				.object({
@@ -109,29 +128,16 @@ export const uptimeRouter = {
 				})
 				.default({})
 		)
+		.output(z.array(scheduleOutputSchema))
 		.handler(async ({ context, input }) => {
 			if (input.organizationId) {
-				try {
-					const { success } = await websitesApi.hasPermission({
-						headers: context.headers,
-						body: {
-							organizationId: input.organizationId,
-							permissions: { website: ["read"] },
-						},
-					});
-					if (!success) {
-						throw new ORPCError("FORBIDDEN", {
-							message: "Missing workspace permissions.",
-						});
-					}
-				} catch (error) {
-					if (error instanceof ORPCError) {
-						throw error;
-					}
-					throw new ORPCError("FORBIDDEN", {
-						message: "Missing workspace permissions.",
-					});
-				}
+				await checkOrgPermission(
+					context,
+					input.organizationId,
+					"website",
+					"read",
+					"Missing workspace permissions."
+				);
 
 				return await db.query.uptimeSchedules.findMany({
 					where: eq(uptimeSchedules.organizationId, input.organizationId),
@@ -140,7 +146,6 @@ export const uptimeRouter = {
 				});
 			}
 
-			// No workspace specified - get monitors from all user's workspaces
 			const userMemberships = await db.query.member.findMany({
 				where: eq(member.userId, context.user.id),
 				columns: { organizationId: true },
@@ -159,7 +164,15 @@ export const uptimeRouter = {
 		}),
 
 	getSchedule: protectedProcedure
+		.route({
+			description: "Returns schedule with QStash status.",
+			method: "POST",
+			path: "/uptime/getSchedule",
+			summary: "Get schedule",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ scheduleId: z.string() }))
+		.output(scheduleOutputSchema)
 		.handler(async ({ context, input }) => {
 			const [dbSchedule, qstashSchedule] = await Promise.all([
 				db.query.uptimeSchedules.findFirst({
@@ -184,6 +197,13 @@ export const uptimeRouter = {
 		}),
 
 	createSchedule: protectedProcedure
+		.route({
+			description: "Creates an uptime monitor. Requires workspace update permission.",
+			method: "POST",
+			path: "/uptime/createSchedule",
+			summary: "Create schedule",
+			tags: ["Uptime"],
+		})
 		.input(
 			z.object({
 				url: z.string().url(),
@@ -202,28 +222,15 @@ export const uptimeRouter = {
 					.optional(),
 			})
 		)
+		.output(scheduleOutputSchema)
 		.handler(async ({ context, input }) => {
-			try {
-				const { success } = await websitesApi.hasPermission({
-					headers: context.headers,
-					body: {
-						organizationId: input.organizationId,
-						permissions: { website: ["update"] },
-					},
-				});
-				if (!success) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Missing workspace permissions.",
-					});
-				}
-			} catch (error) {
-				if (error instanceof ORPCError) {
-					throw error;
-				}
-				throw new ORPCError("FORBIDDEN", {
-					message: "Missing workspace permissions.",
-				});
-			}
+			await checkOrgPermission(
+				context,
+				input.organizationId,
+				"website",
+				"update",
+				"Missing workspace permissions."
+			);
 
 			const existing = await db.query.uptimeSchedules.findFirst({
 				where: and(
@@ -284,6 +291,13 @@ export const uptimeRouter = {
 		}),
 
 	updateSchedule: protectedProcedure
+		.route({
+			description: "Updates an uptime schedule. Requires update permission.",
+			method: "POST",
+			path: "/uptime/updateSchedule",
+			summary: "Update schedule",
+			tags: ["Uptime"],
+		})
 		.input(
 			z.object({
 				scheduleId: z.string(),
@@ -299,6 +313,7 @@ export const uptimeRouter = {
 					.optional(),
 			})
 		)
+		.output(scheduleOutputSchema)
 		.handler(async ({ context, input }) => {
 			await getScheduleAndAuthorize(input.scheduleId, context);
 
@@ -352,7 +367,15 @@ export const uptimeRouter = {
 		}),
 
 	deleteSchedule: protectedProcedure
+		.route({
+			description: "Deletes an uptime schedule. Requires update permission.",
+			method: "POST",
+			path: "/uptime/deleteSchedule",
+			summary: "Delete schedule",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ scheduleId: z.string() }))
+		.output(z.object({ success: z.literal(true) }))
 		.handler(async ({ context, input }) => {
 			await getScheduleAndAuthorize(input.scheduleId, context);
 
@@ -368,7 +391,15 @@ export const uptimeRouter = {
 		}),
 
 	togglePause: protectedProcedure
+		.route({
+			description: "Pauses or resumes an uptime schedule.",
+			method: "POST",
+			path: "/uptime/togglePause",
+			summary: "Toggle pause",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ scheduleId: z.string(), pause: z.boolean() }))
+		.output(z.object({ success: z.literal(true), isPaused: z.boolean() }))
 		.handler(async ({ context, input }) => {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 
@@ -408,9 +439,16 @@ export const uptimeRouter = {
 			return { success: true, isPaused: input.pause };
 		}),
 
-	// Legacy endpoints for backwards compatibility
 	pauseSchedule: protectedProcedure
+		.route({
+			description: "Pauses an uptime schedule. Legacy compatibility.",
+			method: "POST",
+			path: "/uptime/pauseSchedule",
+			summary: "Pause schedule",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ scheduleId: z.string() }))
+		.output(z.object({ success: z.literal(true), isPaused: z.literal(true) }))
 		.handler(async ({ context, input }) => {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 
@@ -443,7 +481,15 @@ export const uptimeRouter = {
 		}),
 
 	resumeSchedule: protectedProcedure
+		.route({
+			description: "Resumes an uptime schedule. Legacy compatibility.",
+			method: "POST",
+			path: "/uptime/resumeSchedule",
+			summary: "Resume schedule",
+			tags: ["Uptime"],
+		})
 		.input(z.object({ scheduleId: z.string() }))
+		.output(z.object({ success: z.literal(true), isPaused: z.literal(false) }))
 		.handler(async ({ context, input }) => {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 

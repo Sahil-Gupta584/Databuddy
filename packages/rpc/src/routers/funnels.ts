@@ -1,6 +1,15 @@
-import { and, desc, eq, funnelDefinitions, isNull, sql } from "@databuddy/db";
+import {
+	and,
+	desc,
+	eq,
+	funnelDefinitions,
+	isNull,
+	member,
+	sql,
+} from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
+import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 import {
@@ -72,9 +81,47 @@ const toAnalyticsSteps = (steps: Step[]): AnalyticsStep[] =>
 		name: step.name,
 	}));
 
+const funnelListOutputSchema = z.object({
+	createdAt: z.date(),
+	description: z.string().nullable(),
+	filters: z.unknown().nullable(),
+	id: z.string(),
+	ignoreHistoricData: z.boolean(),
+	isActive: z.boolean(),
+	name: z.string(),
+	steps: z.unknown(),
+	updatedAt: z.date(),
+});
+
+const funnelOutputSchema = z.object({
+	createdAt: z.date(),
+	createdBy: z.string(),
+	deletedAt: z.date().nullable(),
+	description: z.string().nullable(),
+	filters: z.unknown().nullable(),
+	id: z.string(),
+	ignoreHistoricData: z.boolean(),
+	isActive: z.boolean(),
+	name: z.string(),
+	steps: z.unknown(),
+	updatedAt: z.date(),
+	websiteId: z.string(),
+});
+
+const successOutputSchema = z.object({ success: z.literal(true) });
+
 export const funnelsRouter = {
 	list: publicProcedure
+		.route({
+			description:
+				"Returns all funnels for a website. Requires website read permission.",
+			method: "POST",
+			path: "/funnels/list",
+			summary: "List funnels",
+			tags: ["Funnels"],
+		})
 		.input(z.object({ websiteId: z.string() }))
+		.output(z.array(funnelListOutputSchema))
 		.handler(({ context, input }) =>
 			cache.withCache({
 				key: `list:${input.websiteId}`,
@@ -108,7 +155,16 @@ export const funnelsRouter = {
 		),
 
 	getById: protectedProcedure
+		.route({
+			description:
+				"Returns a single funnel by id. Requires website read permission.",
+			method: "POST",
+			path: "/funnels/getById",
+			summary: "Get funnel",
+			tags: ["Funnels"],
+		})
 		.input(z.object({ id: z.string(), websiteId: z.string() }))
+		.output(funnelOutputSchema)
 		.handler(({ context, input, errors }) =>
 			cache.withCache({
 				key: `byId:${input.id}:${input.websiteId}`,
@@ -140,6 +196,14 @@ export const funnelsRouter = {
 		),
 
 	create: protectedProcedure
+		.route({
+			description:
+				"Creates a new funnel. Requires funnels feature and website update permission.",
+			method: "POST",
+			path: "/funnels/create",
+			summary: "Create funnel",
+			tags: ["Funnels"],
+		})
 		.input(
 			z.object({
 				websiteId: z.string(),
@@ -150,8 +214,42 @@ export const funnelsRouter = {
 				ignoreHistoricData: z.boolean().optional(),
 			})
 		)
+		.output(funnelOutputSchema)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "update");
+			const website = await authorizeWebsiteAccess(
+				context,
+				input.websiteId,
+				"update"
+			);
+
+			let createdBy: string;
+			if (context.user) {
+				createdBy = context.user.id;
+			} else if (context.apiKey) {
+				if (!website.organizationId) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Website must belong to a workspace",
+					});
+				}
+				const orgId = context.apiKey.organizationId ?? website.organizationId;
+				const [ownerRow] = await context.db
+					.select({ userId: member.userId })
+					.from(member)
+					.where(
+						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
+					)
+					.limit(1);
+				if (!ownerRow) {
+					throw new ORPCError("FORBIDDEN", {
+						message: "Could not resolve organization owner for API key",
+					});
+				}
+				createdBy = ownerRow.userId;
+			} else {
+				throw new ORPCError("UNAUTHORIZED", {
+					message: "Authentication is required",
+				});
+			}
 
 			requireFeature(context.billing?.planId, GATED_FEATURES.FUNNELS);
 
@@ -182,7 +280,7 @@ export const funnelsRouter = {
 					steps: input.steps,
 					filters: input.filters,
 					ignoreHistoricData: input.ignoreHistoricData ?? false,
-					createdBy: context.user.id,
+					createdBy,
 				})
 				.returning();
 
@@ -191,6 +289,14 @@ export const funnelsRouter = {
 		}),
 
 	update: protectedProcedure
+		.route({
+			description:
+				"Updates an existing funnel. Requires website update permission.",
+			method: "POST",
+			path: "/funnels/update",
+			summary: "Update funnel",
+			tags: ["Funnels"],
+		})
 		.input(
 			z.object({
 				id: z.string(),
@@ -202,6 +308,7 @@ export const funnelsRouter = {
 				isActive: z.boolean().optional(),
 			})
 		)
+		.output(funnelOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const [existingFunnel] = await context.db
 				.select({ websiteId: funnelDefinitions.websiteId })
@@ -237,7 +344,15 @@ export const funnelsRouter = {
 		}),
 
 	delete: protectedProcedure
+		.route({
+			description: "Soft-deletes a funnel. Requires website delete permission.",
+			method: "POST",
+			path: "/funnels/delete",
+			summary: "Delete funnel",
+			tags: ["Funnels"],
+		})
 		.input(z.object({ id: z.string() }))
+		.output(successOutputSchema)
 		.handler(async ({ context, input, errors }) => {
 			const [existingFunnel] = await context.db
 				.select({ websiteId: funnelDefinitions.websiteId })
@@ -274,6 +389,14 @@ export const funnelsRouter = {
 		}),
 
 	getAnalytics: publicProcedure
+		.route({
+			description:
+				"Returns funnel conversion analytics. Requires website read permission.",
+			method: "POST",
+			path: "/funnels/getAnalytics",
+			summary: "Get funnel analytics",
+			tags: ["Funnels"],
+		})
 		.input(
 			z.object({
 				funnelId: z.string(),
@@ -282,6 +405,7 @@ export const funnelsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context, input, errors }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 
@@ -340,6 +464,14 @@ export const funnelsRouter = {
 		}),
 
 	getAnalyticsByReferrer: publicProcedure
+		.route({
+			description:
+				"Returns funnel analytics broken down by referrer. Requires website read permission.",
+			method: "POST",
+			path: "/funnels/getAnalyticsByReferrer",
+			summary: "Get funnel analytics by referrer",
+			tags: ["Funnels"],
+		})
 		.input(
 			z.object({
 				funnelId: z.string(),
@@ -348,6 +480,7 @@ export const funnelsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
+		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context, input, errors }) => {
 			await authorizeWebsiteAccess(context, input.websiteId, "read");
 

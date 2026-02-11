@@ -376,7 +376,6 @@ export interface DatabuddyTracker {
  * Global window interface extensions
  */
 declare global {
-	// biome-ignore lint/style/useConsistentTypeDefinitions: It's needed here
 	interface Window {
 		databuddy?: DatabuddyTracker;
 		db?: {
