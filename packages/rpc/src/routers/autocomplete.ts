@@ -21,11 +21,10 @@ const getDefaultDateRange = () => {
 
 const getAutocompleteQuery = () => `
 	SELECT 'customEvents' as category, event_name as value
-	FROM analytics.events
-	WHERE client_id = {websiteId:String}
-		AND time >= parseDateTimeBestEffort({startDate:String})
-		AND time <= parseDateTimeBestEffort({endDate:String})
-		AND event_name NOT IN ('screen_view', 'page_exit', 'error', 'web_vitals', 'link_out')
+	FROM analytics.custom_events
+	WHERE website_id = {websiteId:String}
+		AND timestamp >= parseDateTimeBestEffort({startDate:String})
+		AND timestamp <= parseDateTimeBestEffort({endDate:String})
 		AND event_name != ''
 	GROUP BY event_name
 	UNION ALL

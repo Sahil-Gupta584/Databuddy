@@ -9,6 +9,7 @@ export interface RunMcpAgentOptions {
 		ReturnType<typeof import("../../lib/api-key").getApiKeyFromHeader>
 	>;
 	userId: string | null;
+	priorMessages?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
 export async function runMcpAgent(
@@ -29,8 +30,16 @@ export async function runMcpAgent(
 		experimental_context: config.experimental_context,
 	});
 
+	const messages =
+		options.priorMessages && options.priorMessages.length > 0
+			? [
+					...options.priorMessages,
+					{ role: "user" as const, content: options.question },
+				]
+			: [{ role: "user" as const, content: options.question }];
+
 	const result = await agent.generate({
-		prompt: options.question,
+		messages,
 	});
 
 	return result.text ?? "No response generated.";

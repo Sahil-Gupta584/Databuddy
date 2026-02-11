@@ -131,7 +131,7 @@ export default function FlagsLayout({
 								? "Flags that have been archived"
 								: "Control feature rollouts and A/B testing"
 				}
-				docsUrl="https://www.databuddy.cc/docs/features/feature-flags"
+				docsUrl="https://www.databuddy.cc/docs/sdk/feature-flags"
 				feature={
 					isGroupsPage || isTemplatesPage || isArchivePage
 						? undefined

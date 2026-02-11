@@ -18,6 +18,10 @@ import {
 	MCP_DATE_PRESETS,
 	type McpQueryItem,
 } from "./mcp-utils";
+import {
+	appendToConversation,
+	getConversationHistory,
+} from "./conversation-store";
 import { runMcpAgent } from "./run-agent";
 
 interface McpToolContext {
@@ -160,21 +164,49 @@ export function createMcpTools(ctx: McpToolContext) {
 	return {
 		ask: {
 			description:
-				"Ask any analytics question in natural language. The agent will discover your websites, run queries, and return insights. Use this for questions like 'what are my top pages?', 'show me traffic last week', 'how many visitors did we have?', etc.",
+				"Ask any analytics question in natural language. The agent will discover your websites, run queries, and return insights. Pass conversationId for follow-up questions (e.g. 'now compare with last week') to maintain context. Use this for questions like 'what are my top pages?', 'show me traffic last week', 'how many visitors did we have?', etc.",
 			inputSchema: z.object({
 				question: z
 					.string()
 					.describe("Your analytics question in natural language"),
+				conversationId: z
+					.string()
+					.optional()
+					.describe(
+						"Optional. Pass from previous ask response for follow-up questions to maintain conversation history."
+					),
 			}),
-			handler: async (args: { question: string }) => {
+			handler: async (args: {
+				question: string;
+				conversationId?: string;
+			}) => {
 				try {
+					const conversationId =
+						args.conversationId ?? crypto.randomUUID();
+					const priorMessages = await getConversationHistory(
+						conversationId,
+						ctx.userId,
+						ctx.apiKey
+					);
+
 					const answer = await runMcpAgent({
 						question: args.question,
 						requestHeaders: ctx.requestHeaders,
 						apiKey: ctx.apiKey,
 						userId: ctx.userId,
+						priorMessages:
+							priorMessages.length > 0 ? priorMessages : undefined,
 					});
-					return toMcpResult({ answer });
+
+					await appendToConversation(
+						conversationId,
+						ctx.userId,
+						ctx.apiKey,
+						args.question,
+						answer
+					);
+
+					return toMcpResult({ answer, conversationId });
 				} catch {
 					return toMcpResult({ error: "Agent failed" }, true);
 				}
@@ -321,6 +353,7 @@ export function createMcpTools(ctx: McpToolContext) {
 						"get_data defaults to last_7d when no dates",
 						"get_data queries array for batch (2-10)",
 						"get_schema for full ClickHouse docs",
+						"ask returns conversationId - pass it for follow-up questions",
 					],
 				});
 			},
