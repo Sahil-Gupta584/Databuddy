@@ -270,11 +270,11 @@ export function FunnelAnalyticsByReferrer({
 	}
 
 	return (
-		<div className="-mx-4 px-4">
+		<section aria-label="Traffic sources" className="-mx-4 px-4">
+			{/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: horizontal scroll container with drag-to-scroll */}
 			<div
-				aria-label="Traffic sources"
 				className={cn(
-					"scrollbar-none flex cursor-grab gap-2 overflow-x-auto overscroll-contain pb-1"
+					"scrollbar-none flex cursor-grab touch-pan-x gap-2 overflow-x-auto overflow-y-hidden overscroll-y-none overscroll-x-contain pb-1"
 				)}
 				onMouseDown={handleMouseDown}
 				onMouseLeave={handleMouseLeave}
@@ -303,6 +303,6 @@ export function FunnelAnalyticsByReferrer({
 					/>
 				))}
 			</div>
-		</div>
+		</section>
 	);
 }

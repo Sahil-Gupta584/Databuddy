@@ -136,7 +136,7 @@ export function FunnelItem({
 			)}
 		>
 			<button
-				className="group flex w-full cursor-pointer select-none items-center hover:bg-accent/50"
+				className="group flex w-full cursor-pointer select-none text-left hover:bg-accent/50"
 				onClick={handleClick}
 				onKeyDown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
@@ -146,8 +146,7 @@ export function FunnelItem({
 				tabIndex={0}
 				type="button"
 			>
-				<div className="flex flex-1 items-center gap-4 px-4 py-3 sm:px-6 sm:py-4">
-					{/* Expand indicator */}
+				<div className="flex h-20 min-w-0 flex-1 items-center gap-3 px-4 sm:gap-4 sm:px-5">
 					<CaretRightIcon
 						className={cn(
 							"size-4 shrink-0 text-muted-foreground transition-transform duration-200",
@@ -156,69 +155,60 @@ export function FunnelItem({
 						weight="bold"
 					/>
 
-					{/* Name & description */}
-					<div className="min-w-0 flex-1">
-						<div className="flex items-center gap-2">
-							<h3 className="truncate font-medium text-foreground">
+					<div className="min-w-0 flex-1 overflow-hidden">
+						<div className="flex items-baseline gap-2">
+							<h3 className="min-w-0 truncate font-medium text-foreground">
 								{funnel.name}
 							</h3>
 							<Badge className="shrink-0" variant="gray">
 								{funnel.steps.length} steps
 							</Badge>
 						</div>
-						{funnel.description && (
-							<p className="mt-0.5 truncate text-muted-foreground text-sm">
+						{funnel.description ? (
+							<p className="mt-0.5 line-clamp-1 text-muted-foreground text-sm">
 								{funnel.description}
 							</p>
-						)}
+						) : null}
 					</div>
 
-					{/* Stats - Desktop */}
-					<div className="hidden items-center gap-6 lg:flex">
+					<div className="hidden shrink-0 items-center gap-5 lg:flex">
 						{isLoadingAnalytics ? (
 							<>
-								<Skeleton className="h-6 w-16" />
-								<Skeleton className="h-6 w-16" />
-								<Skeleton className="h-6 w-20" />
+								<Skeleton className="h-5 w-14" />
+								<Skeleton className="h-5 w-12" />
+								<Skeleton className="h-5 w-14" />
 							</>
 						) : (
 							<>
-								{/* Mini funnel visualization */}
 								<MiniFunnelPreview steps={stepsData} totalUsers={totalUsers} />
-
-								{/* Users count */}
-								<div className="w-16 text-right">
-									<div className="font-semibold tabular-nums">
+								<div className="flex flex-col items-end">
+									<span className="font-semibold tabular-nums">
 										{formatNumber(totalUsers)}
-									</div>
-									<div className="text-muted-foreground text-xs">users</div>
+									</span>
+									<span className="text-muted-foreground text-xs">Users</span>
 								</div>
-
-								{/* Conversion rate */}
-								<div className="w-16 text-right">
-									<div className="font-semibold text-success tabular-nums">
+								<div className="flex flex-col items-end">
+									<span className="font-semibold text-success tabular-nums">
 										{conversionRate.toFixed(1)}%
-									</div>
-									<div className="text-muted-foreground text-xs">
-										conversion
-									</div>
+									</span>
+									<span className="text-muted-foreground text-xs">
+										Conversion
+									</span>
 								</div>
 							</>
 						)}
 					</div>
 
-					{/* Stats - Mobile */}
-					<div className="flex items-center gap-3 lg:hidden">
+					<div className="flex shrink-0 lg:hidden">
 						{isLoadingAnalytics ? (
 							<Skeleton className="h-5 w-12" />
 						) : (
-							<span className="font-semibold text-primary tabular-nums">
+							<span className="font-semibold tabular-nums">
 								{conversionRate.toFixed(1)}%
 							</span>
 						)}
 					</div>
 
-					{/* Actions */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -261,25 +251,25 @@ export function FunnelItem({
 
 export function FunnelItemSkeleton() {
 	return (
-		<div className="flex items-center border-border border-b px-4 py-3 sm:px-6 sm:py-4">
-			<div className="flex flex-1 items-center gap-4">
+		<div className="flex h-20 items-center border-border border-b px-4 sm:px-5">
+			<div className="flex min-w-0 flex-1 items-center gap-3">
 				<Skeleton className="size-4 shrink-0" />
 				<div className="min-w-0 flex-1 space-y-1.5">
 					<div className="flex items-center gap-2">
-						<Skeleton className="h-5 w-40" />
-						<Skeleton className="h-5 w-16" />
+						<Skeleton className="h-4 w-36" />
+						<Skeleton className="h-5 w-14" />
 					</div>
-					<Skeleton className="h-4 w-64" />
+					<Skeleton className="h-3.5 w-48" />
 				</div>
-				<div className="hidden items-center gap-6 lg:flex">
-					<Skeleton className="h-6 w-20" />
-					<div className="w-16 space-y-1 text-right">
-						<Skeleton className="ml-auto h-5 w-12" />
-						<Skeleton className="ml-auto h-3 w-10" />
+				<div className="hidden items-center gap-5 lg:flex">
+					<Skeleton className="h-5 w-14" />
+					<div className="flex flex-col items-end gap-0.5">
+						<Skeleton className="h-4 w-10" />
+						<Skeleton className="h-3 w-8" />
 					</div>
-					<div className="w-16 space-y-1 text-right">
-						<Skeleton className="ml-auto h-5 w-10" />
-						<Skeleton className="ml-auto h-3 w-14" />
+					<div className="flex flex-col items-end gap-0.5">
+						<Skeleton className="h-4 w-10" />
+						<Skeleton className="h-3 w-8" />
 					</div>
 				</div>
 				<Skeleton className="size-8 shrink-0" />
