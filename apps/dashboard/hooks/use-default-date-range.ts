@@ -12,7 +12,8 @@ export const DEFAULT_DATE_RANGE_PRESETS = [
 	"365d",
 ] as const;
 
-export type DefaultDateRangePreset = (typeof DEFAULT_DATE_RANGE_PRESETS)[number];
+export type DefaultDateRangePreset =
+	(typeof DEFAULT_DATE_RANGE_PRESETS)[number];
 
 function isValidPreset(value: unknown): value is DefaultDateRangePreset {
 	return (
@@ -39,9 +40,10 @@ export function getDefaultDateRangePresetSync(): DefaultDateRangePreset {
 	}
 }
 
-export function getDefaultDatesFromPreset(
-	preset: DefaultDateRangePreset
-): { startDate: string; endDate: string } {
+export function getDefaultDatesFromPreset(preset: DefaultDateRangePreset): {
+	startDate: string;
+	endDate: string;
+} {
 	if (preset === "24h") {
 		return {
 			endDate: dayjs().format("YYYY-MM-DD"),

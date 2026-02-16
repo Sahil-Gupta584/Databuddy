@@ -1,14 +1,14 @@
 import dayjs from "dayjs";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCallback, useMemo } from "react";
-import type {
-	DateRangeState,
-	TimeGranularity,
-} from "@/stores/jotai/filterAtoms";
 import {
 	getDefaultDateRangePresetSync,
 	getDefaultDatesFromPreset,
 } from "@/hooks/use-default-date-range";
+import type {
+	DateRangeState,
+	TimeGranularity,
+} from "@/stores/jotai/filterAtoms";
 
 const MAX_HOURLY_DAYS = 7;
 const AUTO_HOURLY_DAYS = 2;

@@ -1,40 +1,7 @@
 import { Analytics } from "../../types/tables";
 import type { Filter, SimpleQueryConfig, TimeUnit } from "../types";
 
-/**
- * Revenue Attribution CTE Pattern
- *
- * Attribution uses a multi-level fallback approach:
- * 1. session_id match (most accurate, when available)
- * 2. anonymous_id match (fallback for transactions with tracked users)
- * 3. Time-based "last touch" attribution (fallback: attribute to the last
- *    pageview that occurred before/on the purchase date)
- *
- * Transactions without any matches are labeled "Unattributed"
- */
 const ATTRIBUTION_CTE = `
-	-- First touch data by session/anonymous ID
-	first_touch AS (
-		SELECT 
-			session_id,
-			anonymous_id,
-			argMin(country, time) as first_country,
-			argMin(region, time) as first_region,
-			argMin(city, time) as first_city,
-			argMin(browser_name, time) as first_browser,
-			argMin(device_type, time) as first_device,
-			argMin(os_name, time) as first_os,
-			argMin(domain(referrer), time) as first_referrer,
-			argMin(utm_source, time) as first_utm_source,
-			argMin(utm_medium, time) as first_utm_medium,
-			argMin(utm_campaign, time) as first_utm_campaign,
-			argMin(path, time) as first_path
-		FROM ${Analytics.events}
-		WHERE client_id = {websiteId:String}
-			AND (session_id != '' OR anonymous_id != '')
-		GROUP BY session_id, anonymous_id
-	),
-	-- Get all revenue in the date range first
 	revenue_base AS (
 		SELECT 
 			r.transaction_id,
@@ -53,29 +20,76 @@ const ATTRIBUTION_CTE = `
 			AND r.created >= toDateTime({startDate:String})
 			AND r.created <= toDateTime(concat({endDate:String}, ' 23:59:59'))
 	),
-	-- Time-based fallback: last pageview on or before each transaction date
-	time_based_attribution AS (
+	customer_identity_map AS (
 		SELECT 
-			rb.transaction_id,
-			argMax(e.country, e.time) as last_country,
-			argMax(e.region, e.time) as last_region,
-			argMax(e.city, e.time) as last_city,
-			argMax(e.browser_name, e.time) as last_browser,
-			argMax(e.device_type, e.time) as last_device,
-			argMax(e.os_name, e.time) as last_os,
-			argMax(domain(e.referrer), e.time) as last_referrer,
-			argMax(e.utm_source, e.time) as last_utm_source,
-			argMax(e.utm_medium, e.time) as last_utm_medium,
-			argMax(e.utm_campaign, e.time) as last_utm_campaign,
-			argMax(e.path, e.time) as last_path
-		FROM revenue_base rb
-		INNER JOIN ${Analytics.events} e 
-			ON e.client_id = {websiteId:String}
-			AND e.event_name = 'screen_view'
-			AND e.time <= rb.created
-			AND e.time >= rb.created - INTERVAL 7 DAY
-		WHERE rb.r_session_id IS NULL OR rb.r_session_id = ''
-		GROUP BY rb.transaction_id
+			r_customer_id as customer_id,
+			argMin(r_anonymous_id, created) as mapped_anonymous_id,
+			argMin(r_session_id, created) as mapped_session_id
+		FROM revenue_base
+		WHERE r_customer_id IS NOT NULL AND r_customer_id != ''
+			AND (
+				(r_anonymous_id IS NOT NULL AND r_anonymous_id != '')
+				OR (r_session_id IS NOT NULL AND r_session_id != '')
+			)
+		GROUP BY r_customer_id
+	),
+	first_touch AS (
+		SELECT 
+			session_id,
+			anonymous_id,
+			argMin(country, time) as first_country,
+			argMin(region, time) as first_region,
+			argMin(city, time) as first_city,
+			argMin(browser_name, time) as first_browser,
+			argMin(device_type, time) as first_device,
+			argMin(os_name, time) as first_os,
+			argMin(domain(referrer), time) as first_referrer,
+			argMin(utm_source, time) as first_utm_source,
+			argMin(utm_medium, time) as first_utm_medium,
+			argMin(utm_campaign, time) as first_utm_campaign,
+			argMin(path, time) as first_path
+		FROM ${Analytics.events}
+		WHERE client_id = {websiteId:String}
+			AND (session_id != '' OR anonymous_id != '')
+			AND time >= toDateTime({startDate:String}) - INTERVAL 90 DAY
+			AND time <= toDateTime(concat({endDate:String}, ' 23:59:59'))
+		GROUP BY session_id, anonymous_id
+	),
+	first_touch_by_session AS (
+		SELECT 
+			session_id,
+			any(first_country) as first_country,
+			any(first_region) as first_region,
+			any(first_city) as first_city,
+			any(first_browser) as first_browser,
+			any(first_device) as first_device,
+			any(first_os) as first_os,
+			any(first_referrer) as first_referrer,
+			any(first_utm_source) as first_utm_source,
+			any(first_utm_medium) as first_utm_medium,
+			any(first_utm_campaign) as first_utm_campaign,
+			any(first_path) as first_path
+		FROM first_touch
+		WHERE session_id != ''
+		GROUP BY session_id
+	),
+	first_touch_by_anon AS (
+		SELECT 
+			anonymous_id,
+			any(first_country) as first_country,
+			any(first_region) as first_region,
+			any(first_city) as first_city,
+			any(first_browser) as first_browser,
+			any(first_device) as first_device,
+			any(first_os) as first_os,
+			any(first_referrer) as first_referrer,
+			any(first_utm_source) as first_utm_source,
+			any(first_utm_medium) as first_utm_medium,
+			any(first_utm_campaign) as first_utm_campaign,
+			any(first_path) as first_path
+		FROM first_touch
+		WHERE anonymous_id != ''
+		GROUP BY anonymous_id
 	),
 	revenue_attributed AS (
 		SELECT 
@@ -89,45 +103,111 @@ const ATTRIBUTION_CTE = `
 			rb.product_name,
 			rb.provider,
 			rb.created,
-			-- Attribution priority: session_id > anonymous_id > time-based
 			CASE
 				WHEN rb.r_session_id IS NOT NULL AND rb.r_session_id != '' AND ft_session.session_id IS NOT NULL
 					THEN 1
 				WHEN rb.r_anonymous_id IS NOT NULL AND rb.r_anonymous_id != '' AND ft_anon.anonymous_id IS NOT NULL
 					THEN 1
-				WHEN tba.transaction_id IS NOT NULL
+				WHEN rb.r_customer_id IS NOT NULL AND rb.r_customer_id != ''
+					AND cim.customer_id IS NOT NULL
+					AND (
+						(cim.mapped_session_id IS NOT NULL AND cim.mapped_session_id != '' AND ft_customer_session.session_id IS NOT NULL)
+						OR (cim.mapped_anonymous_id IS NOT NULL AND cim.mapped_anonymous_id != '' AND ft_customer_anon.anonymous_id IS NOT NULL)
+					)
 					THEN 1
 				ELSE 0
 			END as is_attributed,
-			-- Use session match > anonymous match > time-based match
-			coalesce(ft_session.first_country, ft_anon.first_country, tba.last_country) as country,
-			coalesce(ft_session.first_region, ft_anon.first_region, tba.last_region) as region,
-			coalesce(ft_session.first_city, ft_anon.first_city, tba.last_city) as city,
-			coalesce(ft_session.first_browser, ft_anon.first_browser, tba.last_browser) as browser_name,
-			coalesce(ft_session.first_device, ft_anon.first_device, tba.last_device) as device_type,
-			coalesce(ft_session.first_os, ft_anon.first_os, tba.last_os) as os_name,
-			coalesce(ft_session.first_referrer, ft_anon.first_referrer, tba.last_referrer) as referrer_domain,
-			coalesce(ft_session.first_utm_source, ft_anon.first_utm_source, tba.last_utm_source) as utm_source,
-			coalesce(ft_session.first_utm_medium, ft_anon.first_utm_medium, tba.last_utm_medium) as utm_medium,
-			coalesce(ft_session.first_utm_campaign, ft_anon.first_utm_campaign, tba.last_utm_campaign) as utm_campaign,
-			coalesce(ft_session.first_path, ft_anon.first_path, tba.last_path) as entry_path
+			coalesce(
+				ft_session.first_country,
+				ft_anon.first_country,
+				ft_customer_session.first_country,
+				ft_customer_anon.first_country
+			) as country,
+			coalesce(
+				ft_session.first_region,
+				ft_anon.first_region,
+				ft_customer_session.first_region,
+				ft_customer_anon.first_region
+			) as region,
+			coalesce(
+				ft_session.first_city,
+				ft_anon.first_city,
+				ft_customer_session.first_city,
+				ft_customer_anon.first_city
+			) as city,
+			coalesce(
+				ft_session.first_browser,
+				ft_anon.first_browser,
+				ft_customer_session.first_browser,
+				ft_customer_anon.first_browser
+			) as browser_name,
+			coalesce(
+				ft_session.first_device,
+				ft_anon.first_device,
+				ft_customer_session.first_device,
+				ft_customer_anon.first_device
+			) as device_type,
+			coalesce(
+				ft_session.first_os,
+				ft_anon.first_os,
+				ft_customer_session.first_os,
+				ft_customer_anon.first_os
+			) as os_name,
+			coalesce(
+				ft_session.first_referrer,
+				ft_anon.first_referrer,
+				ft_customer_session.first_referrer,
+				ft_customer_anon.first_referrer
+			) as referrer_domain,
+			coalesce(
+				ft_session.first_utm_source,
+				ft_anon.first_utm_source,
+				ft_customer_session.first_utm_source,
+				ft_customer_anon.first_utm_source
+			) as utm_source,
+			coalesce(
+				ft_session.first_utm_medium,
+				ft_anon.first_utm_medium,
+				ft_customer_session.first_utm_medium,
+				ft_customer_anon.first_utm_medium
+			) as utm_medium,
+			coalesce(
+				ft_session.first_utm_campaign,
+				ft_anon.first_utm_campaign,
+				ft_customer_session.first_utm_campaign,
+				ft_customer_anon.first_utm_campaign
+			) as utm_campaign,
+			coalesce(
+				ft_session.first_path,
+				ft_anon.first_path,
+				ft_customer_session.first_path,
+				ft_customer_anon.first_path
+			) as entry_path
 		FROM revenue_base rb
-		-- Try session_id match first
-		LEFT JOIN first_touch ft_session 
+		LEFT JOIN first_touch_by_session ft_session 
 			ON rb.r_session_id = ft_session.session_id 
 			AND rb.r_session_id IS NOT NULL 
 			AND rb.r_session_id != ''
-		-- Try anonymous_id match second
-		LEFT JOIN first_touch ft_anon 
+		LEFT JOIN first_touch_by_anon ft_anon 
 			ON rb.r_anonymous_id = ft_anon.anonymous_id 
 			AND rb.r_anonymous_id IS NOT NULL 
 			AND rb.r_anonymous_id != ''
 			AND ft_session.session_id IS NULL
-		-- Time-based fallback
-		LEFT JOIN time_based_attribution tba 
-			ON rb.transaction_id = tba.transaction_id
+		LEFT JOIN customer_identity_map cim 
+			ON rb.r_customer_id = cim.customer_id 
+			AND rb.r_customer_id IS NOT NULL 
+			AND rb.r_customer_id != ''
 			AND ft_session.session_id IS NULL
 			AND ft_anon.anonymous_id IS NULL
+		LEFT JOIN first_touch_by_session ft_customer_session 
+			ON cim.mapped_session_id = ft_customer_session.session_id 
+			AND cim.mapped_session_id IS NOT NULL 
+			AND cim.mapped_session_id != ''
+		LEFT JOIN first_touch_by_anon ft_customer_anon 
+			ON cim.mapped_anonymous_id = ft_customer_anon.anonymous_id 
+			AND cim.mapped_anonymous_id IS NOT NULL 
+			AND cim.mapped_anonymous_id != ''
+			AND ft_customer_session.session_id IS NULL
 	)
 `;
 
@@ -145,7 +225,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 					countIf(type = 'subscription') as subscription_count,
 					sumIf(amount, type = 'sale') as sale_revenue,
 					countIf(type = 'sale') as sale_count,
-					uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as unique_customers,
+					uniq(r_customer_id) as unique_customers,
 					countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions,
 					sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue
 				FROM revenue_attributed
@@ -164,7 +244,9 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 					toDate(created) as date,
 					sumIf(amount, type != 'refund') as revenue,
 					countIf(type != 'refund') as transactions,
-					uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+					uniq(r_customer_id) as customers,
+					sumIf(amount, type = 'refund') as refund_amount,
+					countIf(type = 'refund') as refund_count,
 					sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue,
 					countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions
 				FROM revenue_attributed
@@ -185,7 +267,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 					provider as name,
 					sumIf(amount, type != 'refund') as revenue,
 					countIf(type != 'refund') as transactions,
-					uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+					uniq(r_customer_id) as customers,
 					ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 				FROM revenue_attributed
 				GROUP BY provider
@@ -215,7 +297,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						product_id,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY product_name, product_id
@@ -229,7 +311,6 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 		customizable: true,
 	},
 
-	// Attribution overview - shows attributed vs unattributed breakdown
 	revenue_attribution_overview: {
 		customSql: (websiteId: string, startDate: string, endDate: string) => ({
 			sql: `
@@ -238,7 +319,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 					CASE WHEN is_attributed = 1 THEN 'Attributed' ELSE 'Unattributed' END as name,
 					sumIf(amount, type != 'refund') as revenue,
 					countIf(type != 'refund') as transactions,
-					uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+					uniq(r_customer_id) as customers,
 					ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 				FROM revenue_attributed
 				GROUP BY is_attributed
@@ -271,7 +352,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -309,7 +390,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -344,7 +425,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -379,7 +460,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -414,7 +495,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -449,7 +530,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -485,16 +566,14 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 							END as referrer_name,
 							amount,
 							type,
-							r_anonymous_id,
-							r_customer_id,
-							transaction_id
+							r_customer_id
 						FROM revenue_attributed
 					)
 					SELECT 
 						referrer_name as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM referrer_agg
 					GROUP BY referrer_name
@@ -529,7 +608,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -564,7 +643,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -599,7 +678,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name
@@ -613,7 +692,6 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 		customizable: true,
 	},
 
-	// Revenue by entry page (first page viewed in session)
 	revenue_by_entry_page: {
 		customSql: (
 			websiteId: string,
@@ -635,7 +713,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 						END as name,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
-						uniq(coalesce(nullIf(trim(r_anonymous_id), ''), r_customer_id, transaction_id)) as customers,
+						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
 					GROUP BY name

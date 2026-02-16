@@ -122,8 +122,7 @@ export function useFunnels(
 		analyticsMap,
 		loadingIds,
 		isLoading: query.isLoading,
-		isFetching:
-			query.isFetching || analyticsResults.some((r) => r.isFetching),
+		isFetching: query.isFetching || analyticsResults.some((r) => r.isFetching),
 		error: query.error,
 		refreshAction: invalidateAll,
 

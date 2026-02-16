@@ -224,7 +224,8 @@ export default function AppearanceSettingsPage() {
 									<div className="text-center">
 										<p className="font-medium text-sm">{getPresetLabel(id)}</p>
 										<p className="text-muted-foreground text-xs">
-											Last {id === "24h" ? "24 hours" : id.replace("d", " days")}
+											Last{" "}
+											{id === "24h" ? "24 hours" : id.replace("d", " days")}
 										</p>
 									</div>
 								</button>

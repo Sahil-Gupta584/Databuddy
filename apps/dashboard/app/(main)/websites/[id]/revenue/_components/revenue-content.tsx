@@ -25,7 +25,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { StatCard } from "@/components/analytics/stat-card";
-import { SimpleMetricsChart } from "@/components/charts/simple-metrics-chart";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,11 +39,13 @@ import {
 } from "@/components/ui/sheet";
 import { useDateFilters } from "@/hooks/use-date-filters";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/orpc";
 import { cn } from "@/lib/utils";
 import { dynamicQueryFiltersAtom } from "@/stores/jotai/filterAtoms";
 import { WebsitePageHeader } from "../../_components/website-page-header";
 import { RevenueAttributionTables } from "./revenue-attribution-tables";
+import { RevenueChart } from "./revenue-chart";
 
 interface RevenueContentProps {
 	websiteId: string;
@@ -69,6 +70,8 @@ interface RevenueTimeSeries {
 	revenue: number;
 	transactions: number;
 	customers: number;
+	refund_amount: number;
+	refund_count: number;
 }
 
 const BASKET_URL =
@@ -629,6 +632,7 @@ function RevenueSettingsSheet({
 
 export function RevenueContent({ websiteId }: RevenueContentProps) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const isMobile = useMediaQuery("(max-width: 640px)");
 	const { dateRange } = useDateFilters();
 	const [filters] = useAtom(dynamicQueryFiltersAtom);
 
@@ -666,33 +670,27 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 			timeSeriesData,
 			dateRange.start_date,
 			dateRange.end_date,
-			{ revenue: 0, transactions: 0, customers: 0 }
+			{
+				revenue: 0,
+				transactions: 0,
+				customers: 0,
+				refund_amount: 0,
+				refund_count: 0,
+			}
 		);
 	}, [timeSeriesData, dateRange.start_date, dateRange.end_date]);
 
 	const chartData = useMemo(() => {
 		return paddedTimeSeriesData.map((row) => ({
 			date: row.date,
-			Revenue: row.revenue,
-			Transactions: row.transactions,
+			revenue: row.revenue,
+			transactions: row.transactions,
+			avg_transaction:
+				row.transactions > 0 ? row.revenue / row.transactions : 0,
+			customers: row.customers,
+			refunds: Math.abs(row.refund_amount ?? 0),
 		}));
 	}, [paddedTimeSeriesData]);
-
-	const chartMetrics = useMemo(
-		() => [
-			{
-				key: "Revenue",
-				label: "Revenue",
-				color: "#10b981",
-				formatValue: formatCurrency,
-			},
-		],
-		[]
-	);
-
-	const netRevenue = overview
-		? overview.total_revenue + overview.refund_amount
-		: 0;
 
 	const avgTransaction =
 		overview && overview.total_transactions > 0
@@ -733,17 +731,9 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 
 			{isLoading || hasData ? (
 				<div className="space-y-3 p-4">
-					<SimpleMetricsChart
-						data={chartData}
-						description={`${overview?.total_transactions ?? 0} transactions · ${formatCurrency(avgTransaction)} avg`}
-						height={240}
-						isLoading={isLoading}
-						metrics={chartMetrics}
-						title={formatCurrency(netRevenue)}
-					/>
-
 					<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
 						<StatCard
+							displayMode="text"
 							icon={ReceiptIcon}
 							id="transactions"
 							isLoading={isLoading}
@@ -751,6 +741,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 							value={overview?.total_transactions ?? 0}
 						/>
 						<StatCard
+							displayMode="text"
 							icon={CreditCardIcon}
 							id="avg-transaction"
 							isLoading={isLoading}
@@ -763,6 +754,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 									? `${overview.refund_count} refunds`
 									: undefined
 							}
+							displayMode="text"
 							icon={ArrowsCounterClockwiseIcon}
 							id="refunds"
 							isLoading={isLoading}
@@ -770,6 +762,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 							value={formatCurrency(Math.abs(overview?.refund_amount ?? 0))}
 						/>
 						<StatCard
+							displayMode="text"
 							icon={UsersIcon}
 							id="unique-customers"
 							isLoading={isLoading}
@@ -782,6 +775,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 									? `${overview.attributed_transactions} of ${overview.total_transactions} transactions`
 									: undefined
 							}
+							displayMode="text"
 							icon={TrendUpIcon}
 							id="attribution-rate"
 							isLoading={isLoading}
@@ -792,6 +786,26 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 									: "0%"
 							}
 						/>
+					</div>
+					<div className="rounded border bg-sidebar">
+						<div className="flex flex-col items-start justify-between gap-3 border-b px-3 py-2.5 sm:flex-row sm:px-4 sm:py-3">
+							<div className="min-w-0 flex-1">
+								<h2 className="font-semibold text-base text-sidebar-foreground sm:text-lg">
+									Revenue Trends
+								</h2>
+								<p className="text-sidebar-foreground/70 text-xs sm:text-sm">
+									Daily revenue, transactions, customers, and refunds
+								</p>
+							</div>
+						</div>
+						<div className="overflow-x-auto">
+							<RevenueChart
+								className="rounded border-0"
+								data={chartData}
+								height={isMobile ? 250 : 350}
+								isLoading={isLoading}
+							/>
+						</div>
 					</div>
 
 					<RevenueAttributionTables

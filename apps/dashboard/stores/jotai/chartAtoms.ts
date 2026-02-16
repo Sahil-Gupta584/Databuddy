@@ -39,4 +39,36 @@ export const visibleMetricsAtom = atom((get) => {
 		.map(([metric]) => metric);
 });
 
+export interface RevenueMetricVisibilityState {
+	revenue: boolean;
+	transactions: boolean;
+	avg_transaction: boolean;
+	customers: boolean;
+	refunds: boolean;
+}
+
+const defaultRevenueVisibleMetrics: RevenueMetricVisibilityState = {
+	revenue: true,
+	transactions: true,
+	avg_transaction: false,
+	customers: false,
+	refunds: false,
+};
+
+export const revenueMetricVisibilityAtom =
+	atomWithStorage<RevenueMetricVisibilityState>(
+		"databuddy-revenue-metric-visibility",
+		defaultRevenueVisibleMetrics
+	);
+
+export const toggleRevenueMetricAtom = atom(
+	null,
+	(_, set, metric: keyof RevenueMetricVisibilityState) => {
+		set(revenueMetricVisibilityAtom, (prev) => ({
+			...prev,
+			[metric]: !prev[metric],
+		}));
+	}
+);
+
 export const isRefreshingAtom = atom(false);
