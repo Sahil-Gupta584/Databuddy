@@ -22,7 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { useAtom } from "jotai";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { StatCard } from "@/components/analytics/stat-card";
 import { EmptyState } from "@/components/empty-state";
@@ -42,7 +42,10 @@ import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/orpc";
 import { cn } from "@/lib/utils";
-import { dynamicQueryFiltersAtom } from "@/stores/jotai/filterAtoms";
+import {
+	addDynamicFilterAtom,
+	dynamicQueryFiltersAtom,
+} from "@/stores/jotai/filterAtoms";
 import { WebsitePageHeader } from "../../_components/website-page-header";
 import { RevenueAttributionTables } from "./revenue-attribution-tables";
 import { RevenueChart } from "./revenue-chart";
@@ -635,6 +638,13 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 	const isMobile = useMediaQuery("(max-width: 640px)");
 	const { dateRange } = useDateFilters();
 	const [filters] = useAtom(dynamicQueryFiltersAtom);
+	const [, addFilterAction] = useAtom(addDynamicFilterAtom);
+
+	const handleAddFilter = useCallback(
+		(field: string, value: string) =>
+			addFilterAction({ field, operator: "eq", value }),
+		[addFilterAction]
+	);
 
 	const { data: config } = useQuery({
 		queryKey: ["revenue-config", websiteId],
@@ -811,6 +821,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 					<RevenueAttributionTables
 						dateRange={dateRange}
 						isLoading={isLoading}
+						onAddFilter={handleAddFilter}
 						websiteId={websiteId}
 					/>
 				</div>

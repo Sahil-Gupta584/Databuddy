@@ -10,6 +10,9 @@ interface DataRow {
 	name?: string;
 	pageviews?: number;
 	visitors?: number;
+	revenue?: number;
+	transactions?: number;
+	customers?: number;
 	percentage?: number;
 	referrer?: string;
 	domain?: string;
@@ -78,10 +81,13 @@ export function applyPlugins(
 	}
 
 	if (config.plugins?.deduplicateGeo) {
-		result = aggregateByKey(
-			result,
-			(r) => r.country_code || toStringFn(r.name)
-		);
+		const hasRevenue = result.some((r) => toNumber(r.revenue) > 0);
+		result = hasRevenue
+			? aggregateByKeyRevenue(
+					result,
+					(r) => r.country_code || toStringFn(r.name)
+				)
+			: aggregateByKey(result, (r) => r.country_code || toStringFn(r.name));
 	}
 
 	if (config.plugins?.mapDeviceTypes) {
@@ -126,6 +132,46 @@ function aggregateByKey(
 	}
 
 	return result.sort((a, b) => toNumber(b.visitors) - toNumber(a.visitors));
+}
+
+function aggregateByKeyRevenue(
+	rows: DataRow[],
+	getKey: (row: DataRow) => string
+): DataRow[] {
+	const grouped = new Map<string, DataRow>();
+
+	for (const row of rows) {
+		const key = getKey(row);
+		if (!key) {
+			continue;
+		}
+
+		const existing = grouped.get(key);
+		if (existing) {
+			existing.revenue = toNumber(existing.revenue) + toNumber(row.revenue);
+			existing.transactions =
+				toNumber(existing.transactions) + toNumber(row.transactions);
+			existing.customers =
+				toNumber(existing.customers) + toNumber(row.customers);
+		} else {
+			grouped.set(key, {
+				...row,
+				name: toStringFn(row.country_name) || key,
+			});
+		}
+	}
+
+	const result = Array.from(grouped.values());
+	const total = result.reduce((sum, r) => sum + toNumber(r.revenue), 0);
+
+	for (const row of result) {
+		row.percentage =
+			total > 0
+				? Math.round((toNumber(row.revenue) / total) * 10_000) / 100
+				: 0;
+	}
+
+	return result.sort((a, b) => toNumber(b.revenue) - toNumber(a.revenue));
 }
 
 function parseReferrer(referrerUrl: string, currentDomain?: string | null) {

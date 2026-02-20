@@ -88,7 +88,11 @@ export function createRevenueColumns({
 
 					if (type === "country" || type === "region" || type === "city") {
 						const countryCode = entry.country_code;
-						if (countryCode && countryCode !== "Unknown") {
+						if (
+							countryCode &&
+							countryCode !== "Unknown" &&
+							countryCode !== "Unattributed"
+						) {
 							return <CountryFlag country={countryCode} size={16} />;
 						}
 						return (

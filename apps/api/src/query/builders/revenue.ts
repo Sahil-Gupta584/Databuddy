@@ -373,6 +373,7 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 		timeField: "created",
 		customizable: true,
 		plugins: {
+			deduplicateGeo: true,
 			normalizeGeo: true,
 		},
 	},
@@ -396,12 +397,13 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 							WHEN region = '' OR region IS NULL THEN 'Unknown'
 							ELSE region 
 						END as name,
+						country,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
 						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
-					GROUP BY name
+					GROUP BY name, country
 					ORDER BY revenue DESC
 					LIMIT {limit:UInt32}
 				`,
@@ -410,6 +412,9 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 		},
 		timeField: "created",
 		customizable: true,
+		plugins: {
+			normalizeGeo: true,
+		},
 	},
 
 	revenue_by_city: {
@@ -431,12 +436,13 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 							WHEN city = '' OR city IS NULL THEN 'Unknown'
 							ELSE city 
 						END as name,
+						country,
 						sumIf(amount, type != 'refund') as revenue,
 						countIf(type != 'refund') as transactions,
 						uniq(r_customer_id) as customers,
 						ROUND((sumIf(amount, type != 'refund') / nullIf(SUM(sumIf(amount, type != 'refund')) OVER(), 0)) * 100, 2) as percentage
 					FROM revenue_attributed
-					GROUP BY name
+					GROUP BY name, country
 					ORDER BY revenue DESC
 					LIMIT {limit:UInt32}
 				`,
@@ -445,6 +451,9 @@ export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 		},
 		timeField: "created",
 		customizable: true,
+		plugins: {
+			normalizeGeo: true,
+		},
 	},
 
 	revenue_by_browser: {

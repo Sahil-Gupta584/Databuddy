@@ -16,11 +16,13 @@ interface RevenueAttributionTablesProps {
 	websiteId: string;
 	dateRange: DateRange;
 	isLoading?: boolean;
+	onAddFilter?: (field: string, value: string) => void;
 }
 
 export function RevenueAttributionTables({
 	websiteId,
 	dateRange,
+	onAddFilter,
 }: RevenueAttributionTablesProps) {
 	const [filters] = useAtom(dynamicQueryFiltersAtom);
 
@@ -302,6 +304,7 @@ export function RevenueAttributionTables({
 					description="Revenue by traffic source with attribution"
 					isLoading={isLoading}
 					minHeight={350}
+					onAddFilter={onAddFilter}
 					tabs={trafficTabs}
 					title="Traffic Sources"
 				/>
@@ -310,6 +313,7 @@ export function RevenueAttributionTables({
 					description="Revenue by geographic location"
 					isLoading={isLoading}
 					minHeight={350}
+					onAddFilter={onAddFilter}
 					tabs={geoTabs}
 					title="Geographic"
 				/>
@@ -319,6 +323,7 @@ export function RevenueAttributionTables({
 				description="Revenue by device and browser with attribution"
 				isLoading={isLoading}
 				minHeight={300}
+				onAddFilter={onAddFilter}
 				tabs={techTabs}
 				title="Technology"
 			/>
