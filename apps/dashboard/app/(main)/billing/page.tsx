@@ -131,6 +131,7 @@ export default function BillingPage() {
 
 	const isFree = currentPlan?.id === "free" || currentPlan?.properties?.is_free;
 	const isCanceled = currentPlan?.scenario === "cancel";
+	const isMaxPlan = currentPlan?.id === "scale";
 	const showAddOns = addOns.length > 0 && !isFree;
 
 	return (
@@ -158,7 +159,11 @@ export default function BillingPage() {
 					) : (
 						<div className="divide-y">
 							{usageStats.map((feature) => (
-								<UsageRow feature={feature} key={feature.id} />
+								<UsageRow
+									feature={feature}
+									isMaxPlan={isMaxPlan}
+									key={feature.id}
+								/>
 							))}
 						</div>
 					)}

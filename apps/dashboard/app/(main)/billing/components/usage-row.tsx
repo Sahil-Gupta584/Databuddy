@@ -18,6 +18,7 @@ import {
 	formatCompactNumber,
 	getResetText,
 } from "../utils/feature-usage";
+import { PricingTiersTooltip } from "./pricing-tiers-tooltip";
 
 function formatCurrency(amount: number): string {
 	if (amount >= 1000) {
@@ -50,21 +51,40 @@ function getFeatureIcon(name: string): typeof ChartBarIcon {
 
 export const UsageRow = memo(function UsageRowComponent({
 	feature,
+	isMaxPlan = false,
 }: {
 	feature: FeatureUsage;
+	isMaxPlan?: boolean;
 }) {
 	const used = feature.limit - feature.balance;
+	const hasNormalLimit = !(feature.unlimited || feature.hasExtraCredits);
+	const hasOverage = feature.overage !== null;
+	const isBilledOverage = hasOverage && feature.hasPricedOverage;
+
+	const Icon = getFeatureIcon(feature.name);
+	const intervalLabel = feature.interval
+		? ({ day: "Daily", month: "Monthly", year: "Yearly", lifetime: "Lifetime" }[
+				feature.interval
+			] ?? null)
+		: null;
+
+	if (isBilledOverage && feature.overage) {
+		return (
+			<BilledOverageRow
+				feature={feature}
+				Icon={Icon}
+				intervalLabel={intervalLabel}
+			/>
+		);
+	}
+
 	const usedPercent = feature.unlimited
 		? 0
 		: Math.min(Math.max((used / feature.limit) * 100, 0), 100);
-	const hasNormalLimit = !(feature.unlimited || feature.hasExtraCredits);
 	const isLow = hasNormalLimit && usedPercent > 80;
-	const hasOverage = feature.overage !== null;
-
-	const Icon = getFeatureIcon(feature.name);
 
 	return (
-		<div className="px-5 py-4">
+		<div className="border-b p-5">
 			<div className="mb-3 flex items-center justify-between">
 				<div className="flex items-center gap-3">
 					<div className="flex size-10 shrink-0 items-center justify-center rounded border bg-background">
@@ -83,13 +103,13 @@ export const UsageRow = memo(function UsageRowComponent({
 									Bonus
 								</Badge>
 							)}
-							{hasOverage && (
+							{hasOverage && !isBilledOverage && (
 								<Badge
 									className="bg-destructive/10 text-destructive"
 									variant="secondary"
 								>
 									<WarningIcon className="mr-1" size={10} weight="fill" />
-									Overage
+									Limit reached
 								</Badge>
 							)}
 						</div>
@@ -107,14 +127,14 @@ export const UsageRow = memo(function UsageRowComponent({
 					</Badge>
 				) : feature.hasExtraCredits ? (
 					<div className="text-right">
-						<span className="font-mono text-base">
+						<span className="font-mono text-base tabular-nums">
 							{formatCompactNumber(used)}
 						</span>
 						<div className="text-muted-foreground text-xs">used</div>
 					</div>
 				) : feature.overage ? (
 					<div className="text-right">
-						<span className="font-mono text-base text-destructive">
+						<span className="font-mono text-base text-destructive tabular-nums">
 							+{formatCompactNumber(feature.overage.amount)} over
 						</span>
 						<div className="text-destructive text-xs">
@@ -125,7 +145,7 @@ export const UsageRow = memo(function UsageRowComponent({
 					<div className="text-right">
 						<span
 							className={cn(
-								"font-mono text-base",
+								"font-mono text-base tabular-nums",
 								isLow ? "text-warning" : "text-foreground"
 							)}
 						>
@@ -151,16 +171,120 @@ export const UsageRow = memo(function UsageRowComponent({
 							style={{ width: hasOverage ? "100%" : `${usedPercent}%` }}
 						/>
 					</div>
-					{(isLow || hasOverage) && (
+					{(isLow || hasOverage) && !isMaxPlan ? (
 						<Link
 							className="shrink-0 font-medium text-primary text-sm hover:underline"
 							href="/billing/plans"
 						>
 							Upgrade
 						</Link>
-					)}
+					) : null}
 				</div>
 			)}
 		</div>
 	);
 });
+
+function BilledOverageRow({
+	feature,
+	Icon,
+	intervalLabel,
+}: {
+	feature: FeatureUsage;
+	Icon: typeof ChartBarIcon;
+	intervalLabel: string | null;
+}) {
+	const overage = feature.overage;
+	if (!overage) {
+		return null;
+	}
+
+	const totalUsed = feature.limit + overage.amount;
+	const includedPercent = Math.max(
+		(feature.limit / (feature.limit + overage.amount)) * 100,
+		5
+	);
+
+	return (
+		<div className="border-b p-5">
+			{/* Header */}
+			<div className="mb-4 flex items-center justify-between">
+				<div className="flex items-center gap-3">
+					<div className="flex size-10 shrink-0 items-center justify-center rounded border bg-background">
+						<Icon
+							className="text-muted-foreground"
+							size={18}
+							weight="duotone"
+						/>
+					</div>
+					<div>
+						<span className="font-medium">{feature.name}</span>
+						<div className="flex items-center gap-1 text-muted-foreground text-sm">
+							<ClockIcon size={12} />
+							{getResetText(feature)}
+						</div>
+					</div>
+				</div>
+				{intervalLabel && (
+					<span className="text-muted-foreground text-sm">
+						{intervalLabel} usage
+					</span>
+				)}
+			</div>
+
+			{/* Segmented bar */}
+			<div className="mb-3">
+				<div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+					<div
+						className="h-full bg-primary"
+						style={{ width: `${includedPercent}%` }}
+					/>
+					<div
+						className="h-full bg-primary/30"
+						style={{ width: `${100 - includedPercent}%` }}
+					/>
+				</div>
+				<div className="mt-1.5 flex items-center justify-between text-xs">
+					<div className="flex items-center gap-3">
+						<span className="flex items-center gap-1.5">
+							<span className="inline-block size-2 rounded-full bg-primary" />
+							<span className="text-muted-foreground">
+								{formatCompactNumber(feature.limit)} included
+							</span>
+						</span>
+						<span className="flex items-center gap-1.5">
+							<span className="inline-block size-2 rounded-full bg-primary/30" />
+							<span className="text-muted-foreground">
+								{formatCompactNumber(overage.amount)} overage
+							</span>
+						</span>
+					</div>
+					<span className="font-medium font-mono tabular-nums">
+						{totalUsed.toLocaleString()} total
+					</span>
+				</div>
+			</div>
+
+			{/* Cost + pricing tiers */}
+			<div className="flex items-center justify-between rounded border bg-secondary/50 px-3 py-2">
+				<div className="flex items-center gap-2 text-sm">
+					<span className="text-muted-foreground">Estimated overage cost</span>
+					<span className="font-medium font-mono tabular-nums">
+						~{formatCurrency(overage.cost)}
+					</span>
+				</div>
+				<div className="flex items-center gap-3">
+					{feature.pricingTiers.length > 0 && (
+						<PricingTiersTooltip tiers={feature.pricingTiers} />
+					)}
+					<Link
+						className="font-medium text-primary text-xs hover:underline"
+						href="/billing/cost-breakdown"
+					>
+						View breakdown
+					</Link>
+				</div>
+			</div>
+		</div>
+	);
+}

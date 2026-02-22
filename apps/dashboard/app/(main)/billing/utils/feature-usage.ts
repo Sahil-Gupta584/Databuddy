@@ -16,6 +16,8 @@ export interface FeatureUsage {
 	limit: number;
 	unlimited: boolean;
 	hasExtraCredits: boolean;
+	hasPricedOverage: boolean;
+	pricingTiers: PricingTier[];
 	interval: string | null;
 	resetAt: number | null;
 	overage: {
@@ -89,6 +91,8 @@ export function calculateFeatureUsage(
 				: limit,
 		unlimited,
 		hasExtraCredits,
+		hasPricedOverage: Boolean(pricingTiers?.length),
+		pricingTiers: pricingTiers ?? [],
 		interval: feature.interval ?? null,
 		resetAt: feature.next_reset_at ?? null,
 		overage,
