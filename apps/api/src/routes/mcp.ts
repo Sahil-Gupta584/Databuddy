@@ -96,12 +96,28 @@ export const mcp = new Elysia({ prefix: "/v1/mcp" })
 			);
 		}
 
+		const acceptHeader = request.headers.get("accept") ?? "";
+		const hasBoth =
+			acceptHeader.includes("application/json") &&
+			acceptHeader.includes("text/event-stream");
+		const mcpRequest = hasBoth
+			? request
+			: new Request(request.url, {
+					method: request.method,
+					headers: new Headers([
+						...Array.from(request.headers.entries()),
+						["Accept", "application/json, text/event-stream"],
+					]),
+					body: request.body,
+					duplex: "half",
+				});
+
 		const transport = new WebStandardStreamableHTTPServerTransport({
 			sessionIdGenerator: undefined,
 			enableJsonResponse: false,
 		});
 		await mcpServer.connect(transport);
-		const response = await transport.handleRequest(request);
+		const response = await transport.handleRequest(mcpRequest);
 		await mcpServer.close();
 		return response;
 	});
