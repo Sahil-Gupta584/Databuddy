@@ -1,9 +1,12 @@
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 const SLACK_TIMEOUT_MS = 10_000;
 
 const MIN_NAME_LENGTH = 2;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const URL_TLD_REGEX = /\.[a-z]{2,}$/i;
 
 interface ContactFormData {
 	fullName: string;
@@ -40,7 +43,7 @@ function getClientIP(request: NextRequest): string {
 }
 
 function isValidEmail(email: string): boolean {
-	return email.includes("@") && email.includes(".") && email.length > 3;
+	return EMAIL_REGEX.test(email);
 }
 
 function isValidUrl(value: string): boolean {
@@ -49,8 +52,8 @@ function isValidUrl(value: string): boolean {
 			? value
 			: `https://${value}`;
 	try {
-		new URL(url);
-		return true;
+		const parsed = new URL(url);
+		return parsed.hostname.includes(".") && URL_TLD_REGEX.test(parsed.hostname);
 	} catch {
 		return false;
 	}
@@ -90,15 +93,23 @@ function validateFormData(data: unknown): ValidationResult {
 	}
 
 	const email = formData.email;
-	if (!email || typeof email !== "string" || !isValidEmail(email)) {
+	if (!email || typeof email !== "string" || !isValidEmail(email.trim())) {
 		errors.push("Valid email is required");
+	}
+
+	const phone = formData.phone;
+	if (
+		phone &&
+		typeof phone === "string" &&
+		phone.trim().length > 0 &&
+		!isValidPhoneNumber(phone.trim())
+	) {
+		errors.push("Please enter a valid phone number");
 	}
 
 	if (errors.length > 0) {
 		return { valid: false, errors };
 	}
-
-	const phone = formData.phone;
 
 	const normalizedWebsite = String(website).trim();
 	const websiteUrl =
@@ -121,42 +132,34 @@ function validateFormData(data: unknown): ValidationResult {
 	};
 }
 
-function createSlackField(label: string, value: string) {
-	return {
-		type: "mrkdwn" as const,
-		text: `*${label}:*\n${value}`,
-	};
-}
-
 function buildSlackBlocks(data: ContactFormData, ip: string): unknown[] {
-	const fields = [
-		createSlackField("Full Name", data.fullName),
-		createSlackField("Business / Website", data.businessName),
-		createSlackField("Website", data.website),
-		createSlackField("Email", data.email),
-		createSlackField("Phone", data.phone || "Not provided"),
-		createSlackField("IP", ip),
-	];
+	const lines = [
+		`*Name:* ${data.fullName}`,
+		`*Business:* ${data.businessName}`,
+		`*Website:* <${data.website}|${data.website}>`,
+		`*Email:* <mailto:${data.email}|${data.email}>`,
+		data.phone ? `*Phone:* ${data.phone}` : "",
+	].filter(Boolean);
 
-	const blocks: unknown[] = [
+	return [
 		{
 			type: "header",
-			text: {
-				type: "plain_text",
-				text: "📬 New Contact Lead",
-				emoji: true,
-			},
+			text: { type: "plain_text", text: "New Contact Lead", emoji: true },
+		},
+		{
+			type: "section",
+			text: { type: "mrkdwn", text: lines.join("\n") },
+		},
+		{
+			type: "context",
+			elements: [
+				{
+					type: "mrkdwn",
+					text: `IP: ${ip}  ·  ${new Date().toUTCString()}`,
+				},
+			],
 		},
 	];
-
-	for (let i = 0; i < fields.length; i += 2) {
-		blocks.push({
-			type: "section",
-			fields: fields.slice(i, i + 2),
-		});
-	}
-
-	return blocks;
 }
 
 async function sendToSlack(data: ContactFormData, ip: string): Promise<void> {

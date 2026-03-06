@@ -1,29 +1,69 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { PaperPlaneIcon, SpinnerIcon } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import { toast } from "sonner";
+import { z } from "zod";
 import { SciFiButton } from "@/components/landing/scifi-btn";
 import { SciFiCard } from "@/components/scifi-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "./phone-input";
 
-interface ContactData {
-	fullName: string;
-	businessName: string;
-	website: string;
-	email: string;
-	phone: string;
-}
+const URL_TLD_REGEX = /\.[a-z]{2,}$/i;
 
-const initialFormData: ContactData = {
-	fullName: "",
-	businessName: "",
-	website: "",
-	email: "",
-	phone: "",
-};
+const contactSchema = z.object({
+	fullName: z
+		.string()
+		.min(1, "Full name is required")
+		.min(2, "Name must be at least 2 characters")
+		.max(100, "Name is too long"),
+	businessName: z
+		.string()
+		.min(1, "Business or website name is required")
+		.min(2, "Must be at least 2 characters")
+		.max(200, "Name is too long"),
+	website: z
+		.string()
+		.min(1, "Website is required")
+		.max(500, "URL is too long")
+		.refine((val) => {
+			const raw = val.trim();
+			if (!raw) {
+				return false;
+			}
+			const url =
+				raw.startsWith("http") || raw.startsWith("//") ? raw : `https://${raw}`;
+			try {
+				const parsed = new URL(url);
+				return (
+					parsed.hostname.includes(".") && URL_TLD_REGEX.test(parsed.hostname)
+				);
+			} catch {
+				return false;
+			}
+		}, "Enter a valid website (e.g. example.com)"),
+	email: z
+		.string()
+		.min(1, "Email is required")
+		.email("Enter a valid email address")
+		.max(255, "Email is too long"),
+	phone: z.string().refine(
+		(val) => {
+			if (!val.trim()) {
+				return true;
+			}
+			return isValidPhoneNumber(val);
+		},
+		{ message: "Enter a valid phone number" }
+	),
+});
+
+type ContactFormValues = z.infer<typeof contactSchema>;
 
 function FormField({
 	label,
@@ -42,83 +82,38 @@ function FormField({
 		<div className="space-y-1.5">
 			<Label className="text-foreground text-sm">
 				{label}
-				{required && <span className="ml-1 text-destructive">*</span>}
+				{required ? <span className="ml-1 text-destructive">*</span> : null}
 			</Label>
 			{children}
-			{error && <p className="text-destructive text-xs">{error}</p>}
-			{description && !error && (
+			{error ? <p className="text-destructive text-xs">{error}</p> : null}
+			{description && !error ? (
 				<p className="text-muted-foreground text-xs">{description}</p>
-			)}
+			) : null}
 		</div>
 	);
 }
 
 export default function ContactForm() {
 	const router = useRouter();
-	const [formData, setFormData] = useState<ContactData>(initialFormData);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [errors, setErrors] = useState<
-		Partial<Record<keyof ContactData, string>>
-	>({});
 
-	const validateForm = (): boolean => {
-		const newErrors: Partial<Record<keyof ContactData, string>> = {};
+	const {
+		register,
+		handleSubmit,
+		control,
+		formState: { errors },
+	} = useForm<ContactFormValues>({
+		resolver: zodResolver(contactSchema),
+		defaultValues: {
+			fullName: "",
+			businessName: "",
+			website: "",
+			email: "",
+			phone: "",
+		},
+	});
 
-		if (!formData.fullName.trim()) {
-			newErrors.fullName = "Full name is required";
-		} else if (formData.fullName.trim().length < 2) {
-			newErrors.fullName = "Name must be at least 2 characters";
-		}
-
-		if (!formData.businessName.trim()) {
-			newErrors.businessName = "Business or website name is required";
-		} else if (formData.businessName.trim().length < 2) {
-			newErrors.businessName = "Must be at least 2 characters";
-		}
-
-		if (formData.website.trim()) {
-			const url =
-				formData.website.startsWith("http") || formData.website.startsWith("//")
-					? formData.website
-					: `https://${formData.website}`;
-			try {
-				new URL(url);
-			} catch {
-				newErrors.website = "Please enter a valid website URL";
-			}
-		} else {
-			newErrors.website = "Website is required";
-		}
-
-		if (!formData.email.trim()) {
-			newErrors.email = "Email is required";
-		} else if (
-			!(formData.email.includes("@") && formData.email.includes("."))
-		) {
-			newErrors.email = "Please enter a valid email address";
-		}
-
-		setErrors(newErrors);
-		return Object.keys(newErrors).length === 0;
-	};
-
-	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const { name, value } = e.target;
-		setFormData((prev) => ({ ...prev, [name]: value }));
-
-		if (errors[name as keyof ContactData]) {
-			setErrors((prev) => ({ ...prev, [name]: undefined }));
-		}
-	};
-
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-
-		if (!validateForm()) {
-			toast.error("Please fix the validation errors before submitting.");
-			return;
-		}
-
+	const submitForm = async (data: ContactFormValues) => {
 		setIsSubmitting(true);
 
 		try {
@@ -128,40 +123,38 @@ export default function ContactForm() {
 			const response = await fetch("/api/contact/submit", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(formData),
+				body: JSON.stringify(data),
 				signal: controller.signal,
 			});
 
 			clearTimeout(timeoutId);
 
-			let data: Record<string, unknown>;
+			let responseData: Record<string, unknown>;
 			try {
-				data = (await response.json()) as Record<string, unknown>;
+				responseData = (await response.json()) as Record<string, unknown>;
 			} catch {
 				throw new Error("Invalid response from server. Please try again.");
 			}
 
 			if (!response.ok) {
 				if (response.status === 429) {
-					const resetTime = data.resetTime
-						? new Date(String(data.resetTime)).toLocaleTimeString()
+					const resetTime = responseData.resetTime
+						? new Date(String(responseData.resetTime)).toLocaleTimeString()
 						: "soon";
 					throw new Error(
 						`Too many submissions. Please try again after ${resetTime}.`
 					);
 				}
 
-				if (response.status === 400 && data.details) {
-					const errorMessage = Array.isArray(data.details)
-						? (data.details as string[]).join("\n• ")
-						: String(data.error || "Validation failed");
-					throw new Error(
-						`Please fix the following issues:\n• ${errorMessage}`
-					);
+				if (response.status === 400 && responseData.details) {
+					const errorMessage = Array.isArray(responseData.details)
+						? (responseData.details as string[]).join("\n• ")
+						: String(responseData.error || "Validation failed");
+					throw new Error(`Please fix the following:\n• ${errorMessage}`);
 				}
 
 				throw new Error(
-					String(data.error || "Submission failed. Please try again.")
+					String(responseData.error || "Submission failed. Please try again.")
 				);
 			}
 
@@ -179,7 +172,7 @@ export default function ContactForm() {
 				} else {
 					const errorLines = error.message.split("\n");
 					if (errorLines.length > 1) {
-						toast.error(errorLines[0], {
+						toast.error(errorLines.at(0), {
 							description: errorLines.slice(1).join("\n"),
 							duration: 5000,
 						});
@@ -197,23 +190,20 @@ export default function ContactForm() {
 
 	return (
 		<SciFiCard className="rounded border border-border bg-card/50 p-5 backdrop-blur-sm sm:p-6">
-			<form className="space-y-4" onSubmit={handleSubmit}>
-				<FormField error={errors.fullName} label="Full Name" required>
+			<form className="space-y-4" onSubmit={handleSubmit(submitForm)}>
+				<FormField error={errors.fullName?.message} label="Full Name" required>
 					<Input
 						aria-invalid={!!errors.fullName}
 						className={errors.fullName ? "border-destructive" : ""}
 						maxLength={100}
-						name="fullName"
-						onChange={handleInputChange}
 						placeholder="Jane Doe"
-						required
 						type="text"
-						value={formData.fullName}
+						{...register("fullName")}
 					/>
 				</FormField>
 
 				<FormField
-					error={errors.businessName}
+					error={errors.businessName?.message}
 					label="Business or Website Name"
 					required
 				>
@@ -221,55 +211,50 @@ export default function ContactForm() {
 						aria-invalid={!!errors.businessName}
 						className={errors.businessName ? "border-destructive" : ""}
 						maxLength={200}
-						name="businessName"
-						onChange={handleInputChange}
 						placeholder="Acme Inc. or acme.com"
-						required
 						type="text"
-						value={formData.businessName}
+						{...register("businessName")}
 					/>
 				</FormField>
 
-				<FormField error={errors.website} label="Website" required>
+				<FormField error={errors.website?.message} label="Website" required>
 					<Input
 						aria-invalid={!!errors.website}
 						autoComplete="url"
 						className={errors.website ? "border-destructive" : ""}
 						maxLength={500}
-						name="website"
-						onChange={handleInputChange}
 						placeholder="example.com"
-						required
 						type="text"
-						value={formData.website}
+						{...register("website")}
 					/>
 				</FormField>
 
-				<FormField error={errors.email} label="Contact Email" required>
+				<FormField error={errors.email?.message} label="Contact Email" required>
 					<Input
 						aria-invalid={!!errors.email}
 						className={errors.email ? "border-destructive" : ""}
 						maxLength={255}
-						name="email"
-						onChange={handleInputChange}
 						placeholder="jane@acme.com"
-						required
 						type="email"
-						value={formData.email}
+						{...register("email")}
 					/>
 				</FormField>
 
 				<FormField
 					description="Optional — we'll only call if needed"
+					error={errors.phone?.message}
 					label="Phone Number"
 				>
-					<Input
-						maxLength={30}
+					<Controller
+						control={control}
 						name="phone"
-						onChange={handleInputChange}
-						placeholder="+1 (555) 123-4567"
-						type="tel"
-						value={formData.phone}
+						render={({ field }) => (
+							<PhoneInput
+								error={!!errors.phone}
+								onChangeAction={(val) => field.onChange(val)}
+								value={field.value}
+							/>
+						)}
 					/>
 				</FormField>
 

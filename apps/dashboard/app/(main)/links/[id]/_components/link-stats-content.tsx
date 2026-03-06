@@ -46,11 +46,9 @@ function extractDomain(referrer: string | undefined): string | undefined {
 		return undefined;
 	}
 	try {
-		// If it already looks like a URL, parse it
 		if (referrer.startsWith("http://") || referrer.startsWith("https://")) {
 			return new URL(referrer).hostname;
 		}
-		// If it's just a domain or path like "t.co/" or "google.com"
 		const cleaned = referrer.replace(/^\/+|\/+$/g, "");
 		if (cleaned.includes(".")) {
 			return cleaned.split("/")[0];
