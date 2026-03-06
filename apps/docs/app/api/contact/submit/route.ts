@@ -1,4 +1,4 @@
-import { isValidPhoneNumber } from "libphonenumber-js";
+import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
@@ -132,13 +132,28 @@ function validateFormData(data: unknown): ValidationResult {
 	};
 }
 
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+function getPhoneCountry(phone: string): string {
+	try {
+		const parsed = parsePhoneNumber(phone);
+		const code = parsed?.country;
+		if (code) {
+			return ` (${regionNames.of(code) ?? code})`;
+		}
+	} catch {
+		/* skip */
+	}
+	return "";
+}
+
 function buildSlackBlocks(data: ContactFormData, ip: string): unknown[] {
 	const lines = [
 		`*Name:* ${data.fullName}`,
 		`*Business:* ${data.businessName}`,
 		`*Website:* <${data.website}|${data.website}>`,
 		`*Email:* <mailto:${data.email}|${data.email}>`,
-		data.phone ? `*Phone:* ${data.phone}` : "",
+		data.phone ? `*Phone:* ${data.phone}${getPhoneCountry(data.phone)}` : "",
 	].filter(Boolean);
 
 	return [
