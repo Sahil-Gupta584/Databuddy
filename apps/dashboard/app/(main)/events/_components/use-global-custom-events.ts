@@ -33,9 +33,16 @@ export function useGlobalCustomEventsData(
 			{
 				id: "custom_events_trends",
 				parameters: ["custom_events_trends"],
+				limit: 1000,
 				filters,
 			},
 			{
+				id: "custom_events_trends_by_event",
+				parameters: ["custom_events_trends_by_event"],
+				limit: 5000,
+				filters,
+			},
+			{	
 				id: "custom_events_property_classification",
 				parameters: ["custom_events_property_classification"],
 				limit: 500,

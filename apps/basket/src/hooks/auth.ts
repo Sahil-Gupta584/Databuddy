@@ -19,10 +19,8 @@ const REGEX_WWW_PREFIX = /^www\./;
 const REGEX_DOMAIN_LABEL = /^[a-zA-Z0-9-]+$/;
 
 /**
- * Resolves the owner's user ID for a given website.
- * The owner is the workspace (organization) owner.
- * @param website The website object.
- * @returns A promise that resolves to the owner's user ID or null if not found.
+ * Resolves the billing owner's user ID for a given website.
+ * Used exclusively for Autumn billing checks, NOT for ClickHouse owner_id.
  */
 function _resolveOwnerId(website: Website): Promise<string | null> {
 	return record("resolveOwnerId", async () => {

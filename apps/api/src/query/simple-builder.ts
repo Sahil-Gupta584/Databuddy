@@ -287,6 +287,17 @@ export class SimpleQueryBuilder {
 			};
 		}
 
+		if (
+			filter.field === "website_id" &&
+			filter.op === "eq" &&
+			String(filter.value) === ""
+		) {
+			return {
+				clause: "(website_id = '' OR website_id IS NULL)",
+				params: {},
+			};
+		}
+
 		return buildGenericFilter(filter, key, operator, filter.field);
 	}
 
@@ -341,6 +352,10 @@ export class SimpleQueryBuilder {
 		if (this.config.customSql) {
 			const whereClauseParams: Record<string, Filter["value"]> = {};
 			const whereClause = this.buildWhereClauseFromFilters(whereClauseParams);
+
+			if (this.request.organizationWebsiteIds) {
+				whereClauseParams.orgWebsiteIds = this.request.organizationWebsiteIds;
+			}
 
 			const helpers = this.config.plugins?.sessionAttribution
 				? {

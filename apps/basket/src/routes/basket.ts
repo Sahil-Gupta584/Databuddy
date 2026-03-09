@@ -332,9 +332,9 @@ const app = new Elysia()
 				return validation.error;
 			}
 
-			const { clientId, userAgent, ownerId } = validation;
+			const { clientId, userAgent, organizationId } = validation;
 
-			if (!ownerId) {
+			if (!organizationId) {
 				return new Response(
 					JSON.stringify({
 						status: "error",
@@ -365,7 +365,7 @@ const app = new Elysia()
 			}
 
 			const events = parseResult.data.map((event) => ({
-				owner_id: ownerId,
+				owner_id: organizationId,
 				website_id: clientId,
 				timestamp: event.timestamp,
 				event_name: event.eventName,

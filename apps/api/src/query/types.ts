@@ -242,6 +242,7 @@ export interface QueryRequest {
 	limit?: number;
 	offset?: number;
 	timezone?: string;
+	organizationWebsiteIds?: string[];
 }
 
 export interface CompiledQuery {

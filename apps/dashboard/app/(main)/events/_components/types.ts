@@ -45,6 +45,12 @@ export interface CustomEventsTrend {
 	unique_pages?: number;
 }
 
+export interface CustomEventsTrendByEvent {
+	date: string;
+	event_name: string;
+	total_events: number;
+}
+
 export interface MiniChartDataPoint {
 	date: string;
 	value: number;

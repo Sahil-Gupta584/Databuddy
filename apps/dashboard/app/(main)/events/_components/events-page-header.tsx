@@ -38,9 +38,8 @@ export function EventsPageHeader() {
 		selectedWebsite,
 		websites,
 		isLoadingWebsites,
-		refresh,
-		isFetching,
 		hasQueryId,
+		query,
 	} = useEventsPageContext();
 
 	return (
@@ -69,13 +68,13 @@ export function EventsPageHeader() {
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-[200px]">
+							<DropdownMenuItem onClick={() => setWebsiteFilterMode("all")}>
+								All Websites
+							</DropdownMenuItem>
 							<DropdownMenuItem
 								onClick={() => setWebsiteFilterMode("no-website")}
 							>
 								No Website
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => setWebsiteFilterMode("all")}>
-								All Websites
 							</DropdownMenuItem>
 							{websites.length > 0 && <DropdownMenuSeparator />}
 							{websites.map((website) => (
@@ -89,13 +88,14 @@ export function EventsPageHeader() {
 						</DropdownMenuContent>
 					</DropdownMenu>
 					<Button
-						disabled={isFetching || !hasQueryId}
-						onClick={refresh}
+						aria-label="Refresh events data"
+						disabled={query.isFetching || !hasQueryId}
+						onClick={() => query.refetch()}
 						size="icon"
 						variant="secondary"
 					>
 						<ArrowClockwiseIcon
-							className={isFetching ? "animate-spin" : ""}
+							className={query.isFetching ? "animate-spin" : ""}
 							size={16}
 						/>
 					</Button>

@@ -311,6 +311,16 @@ function createValidationErrorResponse(
 	);
 }
 
+async function getOrganizationWebsiteIds(
+	organizationId: string
+): Promise<string[]> {
+	const result = await db.query.websites.findMany({
+		where: eq(websites.organizationId, organizationId),
+		columns: { id: true },
+	});
+	return result.map((w) => w.id);
+}
+
 /**
  * Get the owner ID for a website (organizationId)
  * Used for LLM queries which are scoped by owner, not website
@@ -768,6 +778,18 @@ async function executeDynamicQuery(
 				: await getWebsiteOwnerId(projectId);
 	}
 
+	// For org-level queries, resolve all website IDs so custom_events queries
+	// can match events by website_id (owner_id may differ between ingestion paths)
+	const hasCustomEventsQueries = request.parameters.some((param) => {
+		const name = typeof param === "string" ? param : param.name;
+		return name.startsWith("custom_event");
+	});
+
+	let orgWebsiteIds: string[] | undefined;
+	if (projectType === "organization" && hasCustomEventsQueries) {
+		orgWebsiteIds = await getOrganizationWebsiteIds(projectId);
+	}
+
 	type PreparedParameter =
 		| { id: string; error: string }
 		| { id: string; request: QueryRequest & { type: string } };
@@ -782,6 +804,7 @@ async function executeDynamicQuery(
 		}
 
 		const isLlmQuery = name.startsWith("llm_");
+		const isCustomEventsQuery = name.startsWith("custom_event");
 		const effectiveProjectId = isLlmQuery ? ownerId : projectId;
 
 		const hasRequiredFields = effectiveProjectId && paramFrom && paramTo;
@@ -811,6 +834,7 @@ async function executeDynamicQuery(
 				limit: request.limit || 100,
 				offset: request.page ? (request.page - 1) * (request.limit || 100) : 0,
 				timezone,
+				organizationWebsiteIds: isCustomEventsQuery ? orgWebsiteIds : undefined,
 			},
 		};
 	});

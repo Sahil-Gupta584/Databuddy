@@ -2,31 +2,30 @@
 
 import type { DynamicQueryFilter } from "@databuddy/shared/types/api";
 import dayjs from "dayjs";
-import {
-	createContext,
-	useCallback,
-	useContext,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { createContext, useContext, useMemo } from "react";
 import { useOrganizationsContext } from "@/components/providers/organizations-provider";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 import { useWebsitesLight } from "@/hooks/use-websites";
-
-type RefreshFn = () => void;
+import { useGlobalCustomEventsData } from "./use-global-custom-events";
 
 /**
- * "no-website" = events not tied to any website (default)
+ * "no-website" = events not tied to any website
  * "all" = all events across the organization
  * string = a specific websiteId
  */
 export type WebsiteFilterMode = "no-website" | "all" | string;
 
+export interface WebsiteEntry {
+	id: string;
+	name: string;
+	domain: string;
+}
+
 interface EventsPageContextValue {
 	websiteFilterMode: WebsiteFilterMode;
 	setWebsiteFilterMode: (mode: WebsiteFilterMode) => void;
-	selectedWebsite: { id: string; name: string; domain: string } | undefined;
-	websites: Array<{ id: string; name: string; domain: string }>;
+	selectedWebsite: WebsiteEntry | undefined;
+	websites: WebsiteEntry[];
 	isLoadingWebsites: boolean;
 	queryOptions: { websiteId?: string; organizationId?: string };
 	websiteFilters: DynamicQueryFilter[];
@@ -37,10 +36,7 @@ interface EventsPageContextValue {
 		granularity: "daily" | "hourly";
 	};
 	isLoadingOrg: boolean;
-	registerRefresh: (fn: RefreshFn) => () => void;
-	refresh: () => void;
-	isFetching: boolean;
-	setIsFetching: (fetching: boolean) => void;
+	query: ReturnType<typeof useGlobalCustomEventsData>;
 }
 
 const EventsPageContext = createContext<EventsPageContextValue | null>(null);
@@ -58,24 +54,21 @@ export function EventsPageProvider({
 }) {
 	const { activeOrganization, isLoading: isLoadingOrg } =
 		useOrganizationsContext();
-	const { websites, isLoading: isLoadingWebsites } = useWebsitesLight();
-	const [websiteFilterMode, setWebsiteFilterMode] =
-		useState<WebsiteFilterMode>("no-website");
-	const [isFetching, setIsFetching] = useState(false);
-	const refreshFnsRef = useRef<Set<RefreshFn>>(new Set());
-
-	const registerRefresh = useCallback((fn: RefreshFn) => {
-		refreshFnsRef.current.add(fn);
-		return () => {
-			refreshFnsRef.current.delete(fn);
-		};
-	}, []);
-
-	const refresh = useCallback(() => {
-		for (const fn of refreshFnsRef.current) {
-			fn();
-		}
-	}, []);
+	const { websites: rawWebsites, isLoading: isLoadingWebsites } =
+		useWebsitesLight();
+	const websites = useMemo(
+		() =>
+			rawWebsites.map((w) => ({
+				id: String(w.id ?? ""),
+				name: String(w.name ?? ""),
+				domain: String(w.domain ?? ""),
+			})),
+		[rawWebsites]
+	);
+	const [websiteFilterMode, setWebsiteFilterMode] = usePersistentState(
+		"events-page-website-filter-mode",
+		"all"
+	);
 
 	const isSpecificWebsite =
 		websiteFilterMode !== "no-website" && websiteFilterMode !== "all";
@@ -98,6 +91,14 @@ export function EventsPageProvider({
 	}, [websiteFilterMode]);
 
 	const hasQueryId = !!(isSpecificWebsite || activeOrganization?.id);
+
+	const query = useGlobalCustomEventsData(
+		queryOptions,
+		DEFAULT_DATE_RANGE,
+		websiteFilters,
+		{ enabled: hasQueryId }
+	);
+
 	const selectedWebsite = isSpecificWebsite
 		? websites.find((w) => w.id === websiteFilterMode)
 		: undefined;
@@ -114,10 +115,7 @@ export function EventsPageProvider({
 			hasQueryId,
 			dateRange: DEFAULT_DATE_RANGE,
 			isLoadingOrg,
-			registerRefresh,
-			refresh,
-			isFetching,
-			setIsFetching,
+			query,
 		}),
 		[
 			websiteFilterMode,
@@ -128,9 +126,7 @@ export function EventsPageProvider({
 			websiteFilters,
 			hasQueryId,
 			isLoadingOrg,
-			registerRefresh,
-			refresh,
-			isFetching,
+			query,
 		]
 	);
 

@@ -22,6 +22,7 @@ interface ValidationResult {
 	userAgent: string;
 	ip: string;
 	ownerId?: string;
+	organizationId?: string;
 }
 
 interface ValidationError {
@@ -366,6 +367,7 @@ export function validateRequest(
 			userAgent,
 			ip,
 			ownerId: website.ownerId || undefined,
+			organizationId: website.organizationId || undefined,
 		};
 	});
 }

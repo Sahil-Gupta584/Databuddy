@@ -2,79 +2,53 @@
 
 import {
 	ArrowClockwiseIcon,
-	CalendarBlankIcon,
 	LightningIcon,
 	TagIcon,
+	TrendUpIcon,
 	UserIcon,
-	UsersIcon,
 } from "@phosphor-icons/react";
 import dayjs from "dayjs";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { StatCard } from "@/components/analytics";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChartPreferences } from "@/hooks/use-chart-preferences";
 import { classifyEventProperties } from "./classify-properties";
+import { EventsList } from "./events-list";
 import { useEventsPageContext } from "./events-page-context";
 import { EventsTrendChart } from "./events-trend-chart";
+import {
+	formatCompactNumber,
+	formatDateLabel,
+	generateDateRange,
+	normalizeDateKey,
+} from "./events-utils";
 import { SummaryView } from "./summary-view";
 import type {
 	CustomEventItem,
 	CustomEventsSummary,
 	CustomEventsTrend,
+	CustomEventsTrendByEvent,
 	MiniChartDataPoint,
 	PropertyClassification,
 	PropertyDistribution,
 	PropertyTopValue,
 } from "./types";
-import { useGlobalCustomEventsData } from "./use-global-custom-events";
-
-const formatNumber = (value: number | null | undefined): string => {
-	if (value === null || value === undefined || Number.isNaN(value)) {
-		return "0";
-	}
-	return Intl.NumberFormat(undefined, {
-		notation: "compact",
-		maximumFractionDigits: 1,
-	}).format(value);
-};
-
-const formatDateByGranularity = (
-	dateStr: string,
-	granularity: "hourly" | "daily"
-): string => {
-	const date = dayjs(dateStr);
-	if (granularity === "hourly") {
-		return date.format("MMM D HH:mm");
-	}
-	return date.format("MMM D");
-};
 
 export function EventsPageContent() {
-	const { queryOptions, websiteFilters, dateRange, hasQueryId, isLoadingOrg } =
-		useEventsPageContext();
-
+	const { dateRange, isLoadingOrg, query } = useEventsPageContext();
 	const { chartType, chartStepType } = useChartPreferences("events");
 
-	const {
-		results: eventsResults,
-		isLoading,
-		isFetching,
-		error,
-	} = useGlobalCustomEventsData(queryOptions, dateRange, websiteFilters, {
-		enabled: hasQueryId,
-	});
-
-	const handleAddFilter = useCallback(
-		(_eventName: string, _propertyKey: string, _value: string) => {},
-		[]
-	);
+	const { results: eventsResults, isLoading, isFetching, error } = query;
 
 	const getRawData = <T,>(id: string): T[] =>
 		(eventsResults?.find((r) => r.queryId === id)?.data?.[id] as T[]) ?? [];
 
 	const summaryData = getRawData<CustomEventsSummary>("custom_events_summary");
 	const trendsData = getRawData<CustomEventsTrend>("custom_events_trends");
+	const trendsByEventData = getRawData<CustomEventsTrendByEvent>(
+		"custom_events_trends_by_event"
+	);
 	const eventsListData = getRawData<CustomEventItem>("custom_events");
 	const classificationsData = getRawData<PropertyClassification>(
 		"custom_events_property_classification"
@@ -97,44 +71,99 @@ export function EventsPageContent() {
 		[eventsListData, classificationsData, distributionsData, topValuesData]
 	);
 
-	const summary: CustomEventsSummary = summaryData[0] ?? {
+	const summary = summaryData[0] ?? {
 		total_events: 0,
 		unique_event_types: 0,
 		unique_users: 0,
-		unique_sessions: 0,
-		unique_pages: 0,
 	};
 
+	const allDates = useMemo(
+		() =>
+			generateDateRange(
+				dateRange.start_date,
+				dateRange.end_date,
+				dateRange.granularity
+			),
+		[dateRange.start_date, dateRange.end_date, dateRange.granularity]
+	);
+
+	const trendsMap = useMemo(
+		() =>
+			new Map(
+				trendsData.map((t) => [
+					normalizeDateKey(t.date, dateRange.granularity),
+					t,
+				])
+			),
+		[trendsData, dateRange.granularity]
+	);
+
 	const miniChartData = useMemo(() => {
-		const createChartSeries = (
+		const createSeries = (
 			field: keyof CustomEventsTrend
 		): MiniChartDataPoint[] =>
-			trendsData.map((event) => ({
-				date:
-					dateRange.granularity === "hourly"
-						? event.date
-						: event.date.slice(0, 10),
-				value: (event[field] as number) ?? 0,
+			allDates.map((date) => ({
+				date,
+				value: (trendsMap.get(date)?.[field] as number) ?? 0,
 			}));
 
 		return {
-			total_events: createChartSeries("total_events"),
-			unique_users: createChartSeries("unique_users"),
-			unique_event_types: createChartSeries("unique_event_types"),
-			unique_sessions: createChartSeries("unique_sessions"),
-			unique_pages: createChartSeries("unique_pages"),
+			total_events: createSeries("total_events"),
+			unique_users: createSeries("unique_users"),
+			unique_event_types: createSeries("unique_event_types"),
 		};
-	}, [trendsData, dateRange.granularity]);
+	}, [trendsMap, allDates]);
 
 	const chartData = useMemo(
 		() =>
-			trendsData.map((event) => ({
-				date: formatDateByGranularity(event.date, dateRange.granularity),
-				events: event.total_events ?? 0,
-				users: event.unique_users ?? 0,
-			})),
-		[trendsData, dateRange.granularity]
+			allDates.map((date) => {
+				const existing = trendsMap.get(date);
+				return {
+					date: formatDateLabel(date, dateRange.granularity),
+					events: existing?.total_events ?? 0,
+					users: existing?.unique_users ?? 0,
+				};
+			}),
+		[trendsMap, dateRange.granularity, allDates]
 	);
+
+	const perEventChartData = useMemo(() => {
+		if (trendsByEventData.length === 0) {
+			return {
+				data: [] as Record<string, string | number>[],
+				eventNames: [] as string[],
+			};
+		}
+
+		const eventNamesSet = new Set<string>();
+		const dateMap = new Map<string, Record<string, string | number>>();
+
+		for (const row of trendsByEventData) {
+			const rawDate = normalizeDateKey(row.date, dateRange.granularity);
+			eventNamesSet.add(row.event_name);
+
+			const existing = dateMap.get(rawDate) ?? {
+				date: formatDateLabel(rawDate, dateRange.granularity),
+			};
+			existing[row.event_name] =
+				((existing[row.event_name] as number) ?? 0) + row.total_events;
+			dateMap.set(rawDate, existing);
+		}
+
+		const eventNames = [...eventNamesSet];
+		const data = allDates.map((date) => {
+			const existing = dateMap.get(date);
+			const row: Record<string, string | number> = {
+				date: formatDateLabel(date, dateRange.granularity),
+			};
+			for (const name of eventNames) {
+				row[name] = (existing?.[name] as number) ?? 0;
+			}
+			return row;
+		});
+
+		return { data, eventNames };
+	}, [trendsByEventData, dateRange.granularity, allDates]);
 
 	const todayDate = dayjs().format("YYYY-MM-DD");
 	const todayEvent = trendsData.find(
@@ -201,30 +230,18 @@ export function EventsPageContent() {
 				</div>
 			) : (
 				<>
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
 						<StatCard
 							chartData={isPageLoading ? undefined : miniChartData.total_events}
 							chartStepType={chartStepType}
 							chartType={chartType}
-							description={`${formatNumber(todayEvents)} today`}
+							description={`${formatCompactNumber(todayEvents)} today`}
 							icon={LightningIcon}
 							id="events-total"
 							isLoading={isPageLoading}
 							showChart
 							title="Total Events"
-							value={formatNumber(summary.total_events)}
-						/>
-						<StatCard
-							chartData={isPageLoading ? undefined : miniChartData.unique_users}
-							chartStepType={chartStepType}
-							chartType={chartType}
-							description={`${formatNumber(todayUsers)} today`}
-							icon={UserIcon}
-							id="events-users"
-							isLoading={isPageLoading}
-							showChart
-							title="Unique Users"
-							value={formatNumber(summary.unique_users)}
+							value={formatCompactNumber(summary.total_events)}
 						/>
 						<StatCard
 							chartData={
@@ -237,36 +254,44 @@ export function EventsPageContent() {
 							isLoading={isPageLoading}
 							showChart
 							title="Event Types"
-							value={formatNumber(summary.unique_event_types)}
+							value={formatCompactNumber(summary.unique_event_types)}
 						/>
 						<StatCard
-							chartData={
-								isPageLoading ? undefined : miniChartData.unique_sessions
-							}
+							chartData={isPageLoading ? undefined : miniChartData.unique_users}
 							chartStepType={chartStepType}
 							chartType={chartType}
-							icon={UsersIcon}
-							id="events-sessions"
+							description={`${formatCompactNumber(todayUsers)} today`}
+							icon={UserIcon}
+							id="events-users"
 							isLoading={isPageLoading}
 							showChart
-							title="Sessions"
-							value={formatNumber(summary.unique_sessions)}
+							title="Unique Users"
+							value={formatCompactNumber(summary.unique_users)}
 						/>
 						<StatCard
-							chartData={isPageLoading ? undefined : miniChartData.unique_pages}
+							chartData={isPageLoading ? undefined : miniChartData.total_events}
 							chartStepType={chartStepType}
 							chartType={chartType}
-							icon={CalendarBlankIcon}
-							id="events-pages"
+							description={`${summary.unique_users > 0 ? (summary.total_events / summary.unique_users).toFixed(1) : "0"} per user`}
+							icon={TrendUpIcon}
+							id="events-today"
 							isLoading={isPageLoading}
 							showChart
-							title="Unique Pages"
-							value={formatNumber(summary.unique_pages)}
+							title="Events Today"
+							value={formatCompactNumber(todayEvents)}
 						/>
 					</div>
 
 					<EventsTrendChart
 						chartData={chartData}
+						eventNames={perEventChartData.eventNames}
+						isFetching={isFetching}
+						isLoading={isPageLoading}
+						perEventData={perEventChartData.data}
+					/>
+
+					<EventsList
+						events={eventsListData}
 						isFetching={isFetching}
 						isLoading={isPageLoading}
 					/>
@@ -283,7 +308,6 @@ export function EventsPageContent() {
 								events={classifiedEvents}
 								isFetching={isFetching}
 								isLoading={isPageLoading}
-								onFilterAction={handleAddFilter}
 							/>
 						</div>
 					</div>
@@ -296,8 +320,8 @@ export function EventsPageContent() {
 function EventsLoadingSkeleton() {
 	return (
 		<div className="space-y-3 sm:space-y-4">
-			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
-				{Array.from({ length: 5 }).map((_, i) => (
+			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+				{Array.from({ length: 4 }).map((_, i) => (
 					<div className="rounded border bg-card p-3 sm:p-4" key={`stat-${i}`}>
 						<div className="flex items-center justify-between">
 							<Skeleton className="h-4 w-20" />

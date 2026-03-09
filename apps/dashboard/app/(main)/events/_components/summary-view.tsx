@@ -3,7 +3,6 @@
 import {
 	ArrowClockwiseIcon,
 	ChartBarIcon,
-	FunnelIcon,
 	ListBulletsIcon,
 } from "@phosphor-icons/react";
 import { parseAsString, useQueryState } from "nuqs";
@@ -17,6 +16,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { getPropertyTypeLabel } from "./classify-properties";
+import { formatCompactNumber } from "./events-utils";
 import type {
 	ClassifiedEvent,
 	ClassifiedProperty,
@@ -28,18 +28,12 @@ interface SummaryViewProps {
 	events: ClassifiedEvent[];
 	isFetching?: boolean;
 	isLoading?: boolean;
-	onFilterAction: (
-		eventName: string,
-		propertyKey: string,
-		value: string
-	) => void;
 }
 
 export function SummaryView({
 	events,
 	isFetching,
 	isLoading,
-	onFilterAction,
 }: SummaryViewProps) {
 	const [selectedEvent, setSelectedEvent] = useQueryState(
 		"event",
@@ -86,7 +80,7 @@ export function SummaryView({
 								<span className="flex items-center gap-2">
 									<span>{event.name}</span>
 									<span className="text-muted-foreground tabular-nums">
-										({formatNumber(event.total_events)})
+										({formatCompactNumber(event.total_events)})
 									</span>
 								</span>
 							</SelectItem>
@@ -113,9 +107,7 @@ export function SummaryView({
 				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
 					{activeEvent.summaryProperties.map((prop) => (
 						<PropertyCard
-							eventName={activeEvent.name}
 							key={prop.key}
-							onFilterAction={onFilterAction}
 							property={prop}
 						/>
 					))}
@@ -137,20 +129,10 @@ export function SummaryView({
 }
 
 interface PropertyCardProps {
-	eventName: string;
 	property: ClassifiedProperty;
-	onFilterAction: (
-		eventName: string,
-		propertyKey: string,
-		value: string
-	) => void;
 }
 
-function PropertyCard({
-	eventName,
-	property,
-	onFilterAction,
-}: PropertyCardProps) {
+function PropertyCard({ property }: PropertyCardProps) {
 	const { classification, values } = property;
 	const maxCount = Math.max(...values.map((v) => v.count));
 
@@ -182,14 +164,9 @@ function PropertyCard({
 						percentage == null || Number.isNaN(percentage) ? 0 : percentage;
 
 					return (
-						<button
-							aria-label={`Filter by ${property.key}: ${displayValue || "empty"}`}
-							className="group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-accent/50 focus:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						<div
+							className="group relative flex w-full items-center gap-2 rounded px-2 py-1.5"
 							key={`${displayValue}-${idx}`}
-							onClick={() =>
-								onFilterAction(eventName, property.key, displayValue)
-							}
-							type="button"
 						>
 							<div
 								className="absolute inset-y-0 left-0 rounded bg-primary/8 transition-all group-hover:bg-primary/12"
@@ -204,19 +181,14 @@ function PropertyCard({
 								</span>
 								<div className="flex shrink-0 items-center gap-2">
 									<span className="text-muted-foreground text-xs tabular-nums">
-										{formatNumber(count)}
+										{formatCompactNumber(count)}
 									</span>
 									<span className="w-10 text-right text-muted-foreground/60 text-xs tabular-nums">
 										{safePercentage.toFixed(0)}%
 									</span>
-									<FunnelIcon
-										aria-hidden="true"
-										className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-										weight="duotone"
-									/>
-								</div>
 							</div>
-						</button>
+						</div>
+					</div>
 					);
 				})}
 
@@ -235,13 +207,6 @@ function isPropertyDistribution(
 	value: PropertyTopValue | PropertyDistribution
 ): value is PropertyDistribution {
 	return "cardinality" in value;
-}
-
-function formatNumber(value: number): string {
-	return Intl.NumberFormat(undefined, {
-		notation: "compact",
-		maximumFractionDigits: 1,
-	}).format(value);
 }
 
 function SummaryViewSkeleton() {

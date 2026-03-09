@@ -8,7 +8,6 @@ sources:
       - analytics-error-spans
       - analytics-vitals-spans
       - analytics-custom-events
-      - analytics-custom-event-spans
       - analytics-ai-call-spans
       - analytics-ai-traffic-spans
       - analytics-outgoing-links
