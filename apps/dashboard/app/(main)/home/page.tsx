@@ -167,7 +167,9 @@ export default function HomePage() {
 				<div className="grid gap-6 lg:grid-cols-2">
 					<SmartInsightsSection
 						insights={insights}
+						isFetching={isInsightsFetching}
 						isLoading={isLoading || isInsightsLoading}
+						onRefreshAction={refetchInsights}
 					/>
 					<MonitorsSection
 						activeMonitors={activeMonitors}

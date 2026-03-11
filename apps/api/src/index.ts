@@ -26,6 +26,7 @@ import {
 } from "./lib/tracing";
 import { agent } from "./routes/agent";
 import { health } from "./routes/health";
+import { insights } from "./routes/insights";
 import { mcp } from "./routes/mcp";
 import { publicApi } from "./routes/public";
 import { query } from "./routes/query";
@@ -309,6 +310,7 @@ const app = new Elysia()
 	)
 	.use(query)
 	.use(agent)
+	.use(insights)
 	.use(mcp)
 	.all(
 		"/rpc/*",

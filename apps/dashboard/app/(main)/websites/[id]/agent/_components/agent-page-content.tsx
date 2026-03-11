@@ -6,7 +6,8 @@ import { ChartBarIcon } from "@phosphor-icons/react/dist/ssr/ChartBar";
 import { LightningIcon } from "@phosphor-icons/react/dist/ssr/Lightning";
 import { TableIcon } from "@phosphor-icons/react/dist/ssr/Table";
 import { useSetAtom } from "jotai";
-import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
 	Conversation,
 	ConversationContent,
@@ -21,7 +22,7 @@ import { AgentChatProvider } from "./agent-chat-context";
 import { AgentInput } from "./agent-input";
 import { AgentMessages } from "./agent-messages";
 import { ChatHistory } from "./chat-history";
-import { setLastChatId } from "./hooks/use-chat-db";
+import { setLastChatId, useChatList } from "./hooks/use-chat-db";
 import { NewChatButton } from "./new-chat-button";
 
 interface AgentPageContentProps {
@@ -64,13 +65,31 @@ export function AgentPageContent({ chatId, websiteId }: AgentPageContentProps) {
 }
 
 function AgentPageContentInner({
-	websiteId: _websiteId,
+	chatId,
+	websiteId,
 }: {
 	chatId: string;
 	websiteId: string;
 }) {
 	const setInputValue = useSetAtom(agentInputAtom);
-	const { messages } = useChat();
+	const { messages, sendMessage } = useChat();
+	const searchParams = useSearchParams();
+	const { saveChat } = useChatList(websiteId);
+	const autoSentRef = useRef(false);
+
+	useEffect(() => {
+		if (autoSentRef.current) {
+			return;
+		}
+		const prompt = searchParams.get("prompt");
+		if (!prompt || messages.length > 0) {
+			return;
+		}
+
+		autoSentRef.current = true;
+		saveChat({ id: chatId, websiteId, title: prompt.slice(0, 100) });
+		sendMessage({ text: prompt });
+	}, [searchParams, messages.length, chatId, websiteId, saveChat, sendMessage]);
 
 	const hasMessages = messages.length > 0;
 

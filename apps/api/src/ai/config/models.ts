@@ -1,4 +1,3 @@
-import { createTracker } from "@databuddy/ai/vercel";
 import { createGateway } from "ai";
 
 const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.AI_API_KEY ?? "";
@@ -13,11 +12,6 @@ export const gateway = createGateway({
 	headers,
 });
 
-export const { track } = createTracker({
-	apiKey: process.env.DATABUDDY_API_KEY,
-	computeCosts: true,
-});
-
 const overrideModel: string | null = null;
 
 const modelNames = {
@@ -28,11 +22,11 @@ const modelNames = {
 } as const;
 
 const baseModels = {
-	triage: track(gateway.chat(modelNames.triage)),
-	analytics: track(gateway.chat(modelNames.analytics)),
-	analyticsMcp: track(gateway.chat(modelNames.analytics)),
-	advanced: track(gateway.chat(modelNames.advanced)),
-	perplexity: track(gateway.chat(modelNames.perplexity)),
+	triage: gateway.chat(modelNames.triage),
+	analytics: gateway.chat(modelNames.analytics),
+	analyticsMcp: gateway.chat(modelNames.analytics),
+	advanced: gateway.chat(modelNames.advanced),
+	perplexity: gateway.chat(modelNames.perplexity),
 } as const;
 
 export const models = {
