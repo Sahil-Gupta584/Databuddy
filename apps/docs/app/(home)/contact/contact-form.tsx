@@ -18,6 +18,7 @@ import { PhoneInput } from "./phone-input";
 const URL_TLD_REGEX = /\.[a-z]{2,}$/i;
 
 const contactSchema = z.object({
+	company: z.string().max(0).optional(),
 	fullName: z
 		.string()
 		.min(1, "Full name is required")
@@ -106,6 +107,7 @@ export default function ContactForm() {
 	} = useForm<ContactFormValues>({
 		resolver: zodResolver(contactSchema),
 		defaultValues: {
+			company: "",
 			fullName: "",
 			businessName: "",
 			website: "",
@@ -125,7 +127,12 @@ export default function ContactForm() {
 			const response = await fetch("/api/contact/submit", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ ...data, anonId, sessionId }),
+				body: JSON.stringify({
+					...data,
+					anonId,
+					sessionId,
+					...(data.company ? { honeypot: true } : {}),
+				}),
 				signal: controller.signal,
 			});
 
@@ -193,6 +200,17 @@ export default function ContactForm() {
 	return (
 		<SciFiCard className="rounded border border-border bg-card/50 p-5 backdrop-blur-sm sm:p-6">
 			<form className="space-y-4" onSubmit={handleSubmit(submitForm)}>
+				<div aria-hidden="true" className="absolute -left-[9999px] opacity-0">
+					<label htmlFor="company">Company</label>
+					<input
+						autoComplete="off"
+						id="company"
+						tabIndex={-1}
+						type="text"
+						{...register("company")}
+					/>
+				</div>
+
 				<FormField error={errors.fullName?.message} label="Full Name" required>
 					<Input
 						aria-invalid={!!errors.fullName}

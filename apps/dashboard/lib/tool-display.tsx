@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 type Input = Record<string, unknown>;
 type Output = Record<string, unknown>;
 
-// Query type labels for analytics
 const QUERY_LABELS: Record<string, string> = {
 	traffic: "traffic",
 	sessions: "sessions",
@@ -52,7 +51,6 @@ function mutationOutput(output: Output, successText: string): ReactNode | null {
 	return null;
 }
 
-// Tool configurations: [labelFn, outputFn]
 type ToolConfig = [
 	(input: Input) => string,
 	(output: Output) => ReactNode | null,
@@ -354,7 +352,7 @@ const TOOLS: Record<string, ToolConfig> = {
 		(output) => (output.success === true ? <p>Analysis complete</p> : null),
 	],
 };
-	
+
 export function formatToolLabel(toolName: string, input: Input): string {
 	const config = TOOLS[toolName];
 	return config ? config[0](input) : "Processing";
