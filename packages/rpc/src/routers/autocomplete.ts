@@ -1,10 +1,10 @@
 import { chQuery } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
-import { ORPCError } from "@orpc/server";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { logger } from "../lib/logger";
 import { publicProcedure } from "../orpc";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import { withWorkspace } from "../procedures/with-workspace";
 import { getCacheAuthContext } from "../utils/cache-keys";
 
 const drizzleCache = createDrizzleCache({ redis, namespace: "autocomplete" });
@@ -167,7 +167,11 @@ export const autocompleteRouter = {
 				ttl: CACHE_TTL,
 				tables: ["websites"],
 				queryFn: async () => {
-					await authorizeWebsiteAccess(context, input.websiteId, "read");
+					await withWorkspace(context, {
+						websiteId: input.websiteId,
+						permissions: ["read"],
+						allowPublicAccess: true,
+					});
 					const params = { websiteId: input.websiteId, startDate, endDate };
 
 					try {
@@ -181,9 +185,9 @@ export const autocompleteRouter = {
 						logger.error(
 							`Failed to fetch autocomplete data for website ${input.websiteId}: ${error instanceof Error ? error.message : String(error)}`
 						);
-						throw new ORPCError("INTERNAL_SERVER_ERROR", {
-							message: `Failed to fetch autocomplete data for website ${input.websiteId}: ${error instanceof Error ? error.message : String(error)}`,
-						});
+						throw rpcError.internal(
+							`Failed to fetch autocomplete data for website ${input.websiteId}: ${error instanceof Error ? error.message : String(error)}`
+						);
 					}
 				},
 			});

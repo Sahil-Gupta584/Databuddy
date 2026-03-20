@@ -1,4 +1,3 @@
-import { websitesApi } from "@databuddy/auth";
 import {
 	and,
 	desc,
@@ -7,11 +6,9 @@ import {
 	flagsToTargetGroups,
 	inArray,
 	isNull,
-	member,
 	ne,
 	notDeleted,
 	targetGroups,
-	websites,
 	withTransaction,
 } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
@@ -27,13 +24,16 @@ import {
 	invalidateFlagCache,
 } from "@databuddy/shared/flags/utils";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import type { Context } from "../orpc";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { requireFeature, requireUsageWithinLimit } from "../types/billing";
-import { authorizeWebsiteAccess, isFullyAuthorized } from "../utils/auth";
+import {
+	isFullyAuthorized,
+	withWorkspace,
+} from "../procedures/with-workspace";
+import { requireFeatureWithLimit, requireUsageWithinLimit } from "../types/billing";
 import { getCacheAuthContext } from "../utils/cache-keys";
 
 const flagsCache = createDrizzleCache({ redis, namespace: "flags" });
@@ -43,39 +43,22 @@ const authorizeScope = async (
 	context: Context,
 	websiteId?: string,
 	organizationId?: string,
-	permission: "read" | "update" | "delete" = "read"
+	permission: "read" | "update" | "delete" = "read",
+	allowPublicAccess = false
 ) => {
 	if (websiteId) {
-		await authorizeWebsiteAccess(context, websiteId, permission);
-	} else if (organizationId) {
-		const headersObj: Record<string, string> = {};
-		context.headers.forEach((value, key) => {
-			headersObj[key] = value;
+		await withWorkspace(context, {
+			websiteId,
+			permissions: [permission],
+			allowPublicAccess,
 		});
+	} else if (organizationId) {
 		const perm = permission === "read" ? "read" : "create";
-		try {
-			const { success } = await websitesApi.hasPermission({
-				headers: headersObj,
-				body: {
-					organizationId,
-					permissions: { website: [perm] },
-				},
-			});
-			if (!success) {
-				throw new ORPCError("FORBIDDEN", {
-					message: "Missing organization permissions.",
-				});
-			}
-		} catch (error) {
-			// If it's already an ORPCError, re-throw it
-			if (error instanceof ORPCError) {
-				throw error;
-			}
-			// Otherwise, treat permission check failures as FORBIDDEN
-			throw new ORPCError("FORBIDDEN", {
-				message: "Missing organization permissions.",
-			});
-		}
+		await withWorkspace(context, {
+			organizationId,
+			resource: "website",
+			permissions: [perm],
+		});
 	}
 };
 
@@ -218,9 +201,9 @@ const checkCircularDependency = async (
 	};
 
 	if (hasCycle(targetFlagKey)) {
-		throw new ORPCError("BAD_REQUEST", {
-			message: `Circular dependency detected involving flag "${targetFlagKey}".`,
-		});
+		throw rpcError.badRequest(
+			`Circular dependency detected involving flag "${targetFlagKey}".`
+		);
 	}
 };
 
@@ -242,7 +225,7 @@ function sanitizeFlagForDemo<T extends FlagWithTargetGroups>(flag: T): T {
 		...flag,
 		rules: Array.isArray(flag.rules) && flag.rules.length > 0 ? [] : flag.rules,
 		targetGroups: flag.targetGroups?.map(
-			(group: { rules?: unknown; [key: string]: unknown }) => ({
+			(group: { rules?: unknown;[key: string]: unknown }) => ({
 				...group,
 				rules:
 					Array.isArray(group.rules) && group.rules.length > 0
@@ -282,7 +265,8 @@ export const flagsRouter = {
 						context,
 						input.websiteId,
 						input.organizationId,
-						"read"
+						"read",
+						true
 					);
 
 					const conditions = [
@@ -358,7 +342,8 @@ export const flagsRouter = {
 						context,
 						input.websiteId,
 						input.organizationId,
-						"read"
+						"read",
+						true
 					);
 
 					const flag = await context.db.query.flags.findFirst({
@@ -377,9 +362,7 @@ export const flagsRouter = {
 					});
 
 					if (!flag) {
-						throw new ORPCError("NOT_FOUND", {
-							message: "Flag not found",
-						});
+						throw rpcError.notFound("Flag", input.id);
 					}
 
 					const mappedFlag = {
@@ -433,7 +416,8 @@ export const flagsRouter = {
 						context,
 						input.websiteId,
 						input.organizationId,
-						"read"
+						"read",
+						true
 					);
 
 					const flag = await context.db.query.flags.findFirst({
@@ -453,9 +437,7 @@ export const flagsRouter = {
 					});
 
 					if (!flag) {
-						throw new ORPCError("NOT_FOUND", {
-							message: "Flag not found",
-						});
+						throw rpcError.notFound("Flag");
 					}
 
 					const mappedFlag = {
@@ -492,60 +474,22 @@ export const flagsRouter = {
 		.input(createFlagSchema)
 		.output(flagOutputSchema)
 		.handler(async ({ context, input }) => {
-			await authorizeScope(
-				context,
-				input.websiteId,
-				input.organizationId,
-				"update"
-			);
+			const wsId = input.websiteId as string | undefined;
+			const orgId = input.organizationId as string | undefined;
 
-			let createdBy: string;
-			if (context.user) {
-				createdBy = context.user.id;
-			} else if (context.apiKey) {
-				const orgId =
-					input.organizationId ??
-					(input.websiteId
-						? (
-								await context.db
-									.select({ organizationId: websites.organizationId })
-									.from(websites)
-									.where(eq(websites.id, input.websiteId))
-									.limit(1)
-							)[0]?.organizationId
-						: null);
-				if (!orgId) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Scope must belong to a workspace",
-					});
-				}
-				const resolvedOrgId = context.apiKey.organizationId ?? orgId;
-				const [ownerRow] = await context.db
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(
-							eq(member.organizationId, resolvedOrgId),
-							eq(member.role, "owner")
-						)
-					)
-					.limit(1);
-				if (!ownerRow) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Could not resolve organization owner for API key",
-					});
-				}
-				createdBy = ownerRow.userId;
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
+			const workspace = wsId
+				? await withWorkspace(context, {
+					websiteId: wsId,
+					permissions: ["update"],
+				})
+				: await withWorkspace(context, {
+					organizationId: orgId,
+					resource: "website",
+					permissions: ["create"],
 				});
-			}
 
-			// Check if feature flags feature is available on the plan
-			requireFeature(context.billing?.planId, GATED_FEATURES.FEATURE_FLAGS);
+			const createdBy = await workspace.getCreatedBy();
 
-			// Count existing flags (excluding archived ones)
 			const existingFlags = await context.db
 				.select({ id: flags.id })
 				.from(flags)
@@ -557,8 +501,8 @@ export const flagsRouter = {
 					)
 				);
 
-			requireUsageWithinLimit(
-				context.billing?.planId,
+			requireFeatureWithLimit(
+				workspace.plan,
 				GATED_FEATURES.FEATURE_FLAGS,
 				existingFlags.length
 			);
@@ -603,9 +547,9 @@ export const flagsRouter = {
 			const finalStatus = hasInactiveDependency ? "inactive" : input.status;
 			if (existingFlag.length > 0) {
 				if (!existingFlag[0].deletedAt) {
-					throw new ORPCError("CONFLICT", {
-						message: "A flag with this key already exists in this scope",
-					});
+					throw rpcError.conflict(
+						"A flag with this key already exists in this scope"
+					);
 				}
 
 				// Use transaction to ensure flag restore + target group associations are atomic
@@ -702,10 +646,9 @@ export const flagsRouter = {
 					});
 
 					if (validGroups.length !== input.targetGroupIds.length) {
-						throw new ORPCError("BAD_REQUEST", {
-							message:
-								"One or more target groups not found or do not belong to this website",
-						});
+						throw rpcError.badRequest(
+							"One or more target groups not found or do not belong to this website"
+						);
 					}
 
 					await tx.insert(flagsToTargetGroups).values(
@@ -748,21 +691,27 @@ export const flagsRouter = {
 				.limit(1);
 
 			if (existingFlag.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Flag not found",
-				});
+				throw rpcError.notFound("Flag", input.id);
 			}
 
 			const flag = existingFlag[0];
 
+			let workspace;
 			if (flag.websiteId) {
-				await authorizeWebsiteAccess(context, flag.websiteId, "update");
-			} else if (flag.organizationId) {
-				await authorizeScope(context, undefined, flag.organizationId, "update");
-			} else {
-				throw new ORPCError("FORBIDDEN", {
-					message: "Flags must be scoped to a website or organization",
+				workspace = await withWorkspace(context, {
+					websiteId: flag.websiteId,
+					permissions: ["update"],
 				});
+			} else if (flag.organizationId) {
+				workspace = await withWorkspace(context, {
+					organizationId: flag.organizationId,
+					resource: "website",
+					permissions: ["create"],
+				});
+			} else {
+				throw rpcError.forbidden(
+					"Flags must be scoped to a website or organization"
+				);
 			}
 
 			const isUnarchiving =
@@ -786,7 +735,7 @@ export const flagsRouter = {
 					);
 
 				requireUsageWithinLimit(
-					context.billing?.planId,
+					workspace.plan,
 					GATED_FEATURES.FEATURE_FLAGS,
 					existingActiveFlags.length
 				);
@@ -856,10 +805,9 @@ export const flagsRouter = {
 						});
 
 						if (validGroups.length !== targetGroupIds.length) {
-							throw new ORPCError("BAD_REQUEST", {
-								message:
-									"One or more target groups not found or do not belong to this website",
-							});
+							throw rpcError.badRequest(
+								"One or more target groups not found or do not belong to this website"
+							);
 						}
 					}
 
@@ -911,21 +859,26 @@ export const flagsRouter = {
 				.limit(1);
 
 			if (existingFlag.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Flag not found",
-				});
+				throw rpcError.notFound("Flag", input.id);
 			}
 
 			const flag = existingFlag[0];
 
 			if (flag.websiteId) {
-				await authorizeWebsiteAccess(context, flag.websiteId, "delete");
-			} else if (flag.organizationId) {
-				await authorizeScope(context, undefined, flag.organizationId, "delete");
-			} else {
-				throw new ORPCError("FORBIDDEN", {
-					message: "Flags must be scoped to a website or organization",
+				await withWorkspace(context, {
+					websiteId: flag.websiteId,
+					permissions: ["delete"],
 				});
+			} else if (flag.organizationId) {
+				await withWorkspace(context, {
+					organizationId: flag.organizationId,
+					resource: "website",
+					permissions: ["create"],
+				});
+			} else {
+				throw rpcError.forbidden(
+					"Flags must be scoped to a website or organization"
+				);
 			}
 
 			await context.db

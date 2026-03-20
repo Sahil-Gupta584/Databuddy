@@ -1,14 +1,11 @@
-import { and, db, eq, inArray, member, uptimeSchedules } from "@databuddy/db";
+import { and, db, eq, uptimeSchedules } from "@databuddy/db";
 import { logger } from "@databuddy/shared/logger";
-import { ORPCError } from "@orpc/server";
 import { Client } from "@upstash/qstash";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { protectedProcedure } from "../orpc";
-import {
-	authorizeUptimeScheduleAccess,
-	checkOrgPermission,
-} from "../utils/auth";
+import { withWorkspace } from "../procedures/with-workspace";
 
 const client = new Client({ token: process.env.UPSTASH_QSTASH_TOKEN });
 
@@ -39,18 +36,20 @@ const UPTIME_URL_GROUP = isProd ? "uptime" : "uptime-staging";
 
 async function getScheduleAndAuthorize(
 	scheduleId: string,
-	context: Parameters<typeof authorizeUptimeScheduleAccess>[0]
+	context: Parameters<typeof withWorkspace>[0]
 ) {
 	const schedule = await db.query.uptimeSchedules.findFirst({
 		where: eq(uptimeSchedules.id, scheduleId),
 	});
 
 	if (!schedule) {
-		throw new ORPCError("NOT_FOUND", { message: "Schedule not found" });
+		throw rpcError.notFound("Schedule", scheduleId);
 	}
 
-	await authorizeUptimeScheduleAccess(context, {
+	await withWorkspace(context, {
 		organizationId: schedule.organizationId,
+		resource: "website",
+		permissions: ["update"],
 	});
 
 	return schedule;
@@ -105,8 +104,10 @@ export const uptimeRouter = {
 			});
 
 			if (schedule) {
-				await authorizeUptimeScheduleAccess(context, {
+				await withWorkspace(context, {
 					organizationId: schedule.organizationId,
+					resource: "website",
+					permissions: ["read"],
 				});
 			}
 
@@ -131,34 +132,20 @@ export const uptimeRouter = {
 		)
 		.output(z.array(scheduleOutputSchema))
 		.handler(async ({ context, input }) => {
-			if (input.organizationId) {
-				await checkOrgPermission(
-					context,
-					input.organizationId,
-					"website",
-					"read",
-					"Missing workspace permissions."
-				);
+			const orgId = input.organizationId ?? context.organizationId;
 
-				return await db.query.uptimeSchedules.findMany({
-					where: eq(uptimeSchedules.organizationId, input.organizationId),
-					orderBy: (table, { desc }) => [desc(table.createdAt)],
-					with: { website: true },
-				});
+			if (!orgId) {
+				throw rpcError.badRequest("Organization ID is required");
 			}
 
-			const userMemberships = await db.query.member.findMany({
-				where: eq(member.userId, context.user.id),
-				columns: { organizationId: true },
+			await withWorkspace(context, {
+				organizationId: orgId,
+				resource: "website",
+				permissions: ["read"],
 			});
-			const orgIds = userMemberships.map((m) => m.organizationId);
 
-			if (orgIds.length === 0) {
-				return [];
-			}
-
-			return await db.query.uptimeSchedules.findMany({
-				where: inArray(uptimeSchedules.organizationId, orgIds),
+			return db.query.uptimeSchedules.findMany({
+				where: eq(uptimeSchedules.organizationId, orgId),
 				orderBy: (table, { desc }) => [desc(table.createdAt)],
 				with: { website: true },
 			});
@@ -184,11 +171,13 @@ export const uptimeRouter = {
 			]);
 
 			if (!dbSchedule) {
-				throw new ORPCError("NOT_FOUND", { message: "Schedule not found" });
+				throw rpcError.notFound("Schedule", input.scheduleId);
 			}
 
-			await authorizeUptimeScheduleAccess(context, {
+			await withWorkspace(context, {
 				organizationId: dbSchedule.organizationId,
+				resource: "website",
+				permissions: ["read"],
 			});
 
 			return {
@@ -226,13 +215,11 @@ export const uptimeRouter = {
 		)
 		.output(scheduleOutputSchema)
 		.handler(async ({ context, input }) => {
-			await checkOrgPermission(
-				context,
-				input.organizationId,
-				"website",
-				"update",
-				"Missing workspace permissions."
-			);
+			await withWorkspace(context, {
+				organizationId: input.organizationId,
+				resource: "website",
+				permissions: ["update"],
+			});
 
 			const existing = await db.query.uptimeSchedules.findFirst({
 				where: and(
@@ -242,9 +229,7 @@ export const uptimeRouter = {
 			});
 
 			if (existing) {
-				throw new ORPCError("CONFLICT", {
-					message: "Monitor already exists for this URL in this workspace",
-				});
+				throw rpcError.conflict("Monitor already exists for this URL in this workspace");
 			}
 
 			const scheduleId = randomUUIDv7();
@@ -270,9 +255,7 @@ export const uptimeRouter = {
 					.delete(uptimeSchedules)
 					.where(eq(uptimeSchedules.id, scheduleId));
 				logger.error({ scheduleId, error }, "QStash failed, rolled back");
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to create monitor",
-				});
+				throw rpcError.internal("Failed to create monitor");
 			}
 
 			triggerInitialCheck(scheduleId);
@@ -406,11 +389,11 @@ export const uptimeRouter = {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 
 			if (schedule.isPaused === input.pause) {
-				throw new ORPCError("BAD_REQUEST", {
-					message: input.pause
+				throw rpcError.badRequest(
+					input.pause
 						? "Schedule is already paused"
-						: "Schedule is not paused",
-				});
+						: "Schedule is not paused"
+				);
 			}
 
 			try {
@@ -428,9 +411,7 @@ export const uptimeRouter = {
 					{ scheduleId: input.scheduleId, error },
 					"Failed to toggle QStash schedule"
 				);
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to update monitor status",
-				});
+				throw rpcError.internal("Failed to update monitor status");
 			}
 
 			logger.info(
@@ -455,9 +436,7 @@ export const uptimeRouter = {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 
 			if (schedule.isPaused) {
-				throw new ORPCError("BAD_REQUEST", {
-					message: "Schedule is already paused",
-				});
+				throw rpcError.badRequest("Schedule is already paused");
 			}
 
 			try {
@@ -473,9 +452,7 @@ export const uptimeRouter = {
 					{ scheduleId: input.scheduleId, error },
 					"Failed to pause"
 				);
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to pause monitor",
-				});
+				throw rpcError.internal("Failed to pause monitor");
 			}
 
 			logger.info({ scheduleId: input.scheduleId }, "Schedule paused");
@@ -496,9 +473,7 @@ export const uptimeRouter = {
 			const schedule = await getScheduleAndAuthorize(input.scheduleId, context);
 
 			if (!schedule.isPaused) {
-				throw new ORPCError("BAD_REQUEST", {
-					message: "Schedule is not paused",
-				});
+				throw rpcError.badRequest("Schedule is not paused");
 			}
 
 			try {
@@ -514,9 +489,7 @@ export const uptimeRouter = {
 					{ scheduleId: input.scheduleId, error },
 					"Failed to resume"
 				);
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to resume monitor",
-				});
+				throw rpcError.internal("Failed to resume monitor");
 			}
 
 			logger.info({ scheduleId: input.scheduleId }, "Schedule resumed");

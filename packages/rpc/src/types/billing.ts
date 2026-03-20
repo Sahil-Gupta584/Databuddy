@@ -39,7 +39,7 @@ export interface BillingContext {
  *
  * @example
  * ```ts
- * if (hasPlan(context.billing?.planId, PLAN_IDS.PRO)) {
+ * if (hasPlan((await context.getBilling())?.planId, PLAN_IDS.PRO)) {
  *   // User has pro or higher
  * }
  * ```
@@ -67,7 +67,7 @@ export function hasPlan(
  *
  * @example
  * ```ts
- * if (isFreePlan(context.billing?.planId)) {
+ * if (isFreePlan((await context.getBilling())?.planId)) {
  *   throw errors.FEATURE_UNAVAILABLE({ data: { feature: "export" } });
  * }
  * ```
@@ -81,7 +81,7 @@ export function isFreePlan(planId: string | undefined): boolean {
  *
  * @example
  * ```ts
- * if (!canAccessFeature(context.billing?.planId, GATED_FEATURES.AI_AGENT)) {
+ * if (!canAccessFeature((await context.getBilling())?.planId, GATED_FEATURES.AI_AGENT)) {
  *   throw errors.FEATURE_UNAVAILABLE({ data: { feature: "ai_agent", requiredPlan: "pro" } });
  * }
  * ```
@@ -98,7 +98,7 @@ export function canAccessFeature(
  *
  * @example
  * ```ts
- * if (!canAccessAiCapability(context.billing?.planId, AI_CAPABILITIES.AUTO_INSIGHTS)) {
+ * if (!canAccessAiCapability((await context.getBilling())?.planId, AI_CAPABILITIES.AUTO_INSIGHTS)) {
  *   throw errors.FEATURE_UNAVAILABLE({ data: { feature: "auto_insights", requiredPlan: "pro" } });
  * }
  * ```
@@ -115,7 +115,7 @@ export function canAccessAiCapability(
  *
  * @example
  * ```ts
- * const limit = getFeatureLimit(context.billing?.planId, GATED_FEATURES.FUNNELS);
+ * const limit = getFeatureLimit((await context.getBilling())?.planId, GATED_FEATURES.FUNNELS);
  * if (limit === false) {
  *   throw errors.FEATURE_UNAVAILABLE({ data: { feature: "funnels" } });
  * }
@@ -134,7 +134,7 @@ export function getFeatureLimit(
  * @example
  * ```ts
  * const funnelCount = await getFunnelCount(websiteId);
- * if (!isUsageWithinLimit(context.billing?.planId, GATED_FEATURES.FUNNELS, funnelCount)) {
+ * if (!isUsageWithinLimit((await context.getBilling())?.planId, GATED_FEATURES.FUNNELS, funnelCount)) {
  *   throw errors.PLAN_LIMIT_EXCEEDED({ data: { limit: 5, current: funnelCount } });
  * }
  * ```
@@ -152,7 +152,7 @@ export function isUsageWithinLimit(
  *
  * @example
  * ```ts
- * const remaining = getUsageRemaining(context.billing?.planId, GATED_FEATURES.GOALS, currentGoalCount);
+ * const remaining = getUsageRemaining((await context.getBilling())?.planId, GATED_FEATURES.GOALS, currentGoalCount);
  * if (remaining === 0) {
  *   throw errors.PLAN_LIMIT_EXCEEDED({ data: { limit: 3, current: currentGoalCount } });
  * }
@@ -172,7 +172,7 @@ export function getUsageRemaining(
  *
  * @example
  * ```ts
- * requireFeature(context.billing?.planId, GATED_FEATURES.AI_AGENT);
+ * requireFeature((await context.getBilling())?.planId, GATED_FEATURES.AI_AGENT);
  * // Throws if user doesn't have access
  * ```
  */
@@ -192,13 +192,32 @@ export function requireFeature(
 }
 
 /**
+ * Checks feature availability AND usage limit in one call.
+ * Throws FEATURE_UNAVAILABLE if the feature isn't on the plan,
+ * or PLAN_LIMIT_EXCEEDED if the usage limit is reached.
+ *
+ * @example
+ * ```ts
+ * requireFeatureWithLimit(workspace.plan, GATED_FEATURES.FUNNELS, existingCount);
+ * ```
+ */
+export function requireFeatureWithLimit(
+	planId: string | undefined,
+	feature: GatedFeatureId,
+	currentUsage: number
+): void {
+	requireFeature(planId, feature);
+	requireUsageWithinLimit(planId, feature, currentUsage);
+}
+
+/**
  * Throws an error if current usage exceeds the plan's limit.
  * Uses PLAN_LIMIT_EXCEEDED error code for type-safe client handling.
  *
  * @example
  * ```ts
  * const funnelCount = await db.query.funnels.findMany({ where: eq(funnels.websiteId, websiteId) }).length;
- * requireUsageWithinLimit(context.billing?.planId, GATED_FEATURES.FUNNELS, funnelCount);
+ * requireUsageWithinLimit(workspace.plan, GATED_FEATURES.FUNNELS, funnelCount);
  * ```
  */
 export function requireUsageWithinLimit(
@@ -233,7 +252,7 @@ export function requireUsageWithinLimit(
  *
  * @example
  * ```ts
- * const capabilities = getUserCapabilities(context.billing?.planId);
+ * const capabilities = getUserCapabilities((await context.getBilling())?.planId);
  * console.log(capabilities.features, capabilities.limits, capabilities.ai);
  * ```
  */
@@ -247,7 +266,7 @@ export function getUserCapabilities(planId: string | undefined) {
  *
  * @example
  * ```ts
- * requireAiCapability(context.billing?.planId, AI_CAPABILITIES.AUTO_INSIGHTS);
+ * requireAiCapability((await context.getBilling())?.planId, AI_CAPABILITIES.AUTO_INSIGHTS);
  * ```
  */
 export function requireAiCapability(

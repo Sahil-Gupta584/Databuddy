@@ -1,14 +1,14 @@
-import { chQuery, eq, inArray, member, websites } from "@databuddy/db";
+import { chQuery, eq, websites } from "@databuddy/db";
 import type {
 	DailyUsageByTypeRow,
 	DailyUsageRow,
 	EventTypeBreakdown,
 } from "@databuddy/shared/types/billing";
-import { ORPCError } from "@orpc/server";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { logger } from "../lib/logger";
 import { protectedProcedure } from "../orpc";
-import { checkOrgPermission } from "../utils/auth";
+import { withWorkspace } from "../procedures/with-workspace";
 
 const DAYS_IN_MONTH = 30;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -96,15 +96,6 @@ const getDailyUsageByTypeQuery = (): string => {
 	ORDER BY date ASC, event_category ASC`;
 };
 
-const normalizeOrganizationId = (
-	organizationId: string | null | undefined
-): string | null => {
-	if (!organizationId || organizationId.trim().length === 0) {
-		return null;
-	}
-	return organizationId;
-};
-
 const aggregateUsageData = (
 	results: DailyUsageByTypeRow[]
 ): {
@@ -174,51 +165,26 @@ export const billingRouter = {
 					? { startDate: input.startDate, endDate: input.endDate }
 					: getDefaultDateRange();
 
-			const organizationId = normalizeOrganizationId(input.organizationId);
+			const resolvedOrgId =
+				(input.organizationId?.trim() || null) ??
+				context.organizationId;
 
-			if (organizationId) {
-				await checkOrgPermission(
-					context,
-					organizationId,
-					"website",
-					"read",
-					"Missing organization permissions."
-				);
+			if (!resolvedOrgId) {
+				throw rpcError.badRequest("Organization ID is required");
 			}
 
+			await withWorkspace(context, {
+				organizationId: resolvedOrgId,
+				resource: "website",
+				permissions: ["read"],
+			});
+
 			try {
-				let websiteIds: string[];
-
-				if (organizationId) {
-					const userWebsites = await context.db.query.websites.findMany({
-						where: eq(websites.organizationId, organizationId),
-						columns: { id: true },
-					});
-					websiteIds = userWebsites.map((site) => site.id);
-				} else {
-					const userMemberships = await context.db.query.member.findMany({
-						where: eq(member.userId, context.user.id),
-						columns: { organizationId: true },
-					});
-					const orgIds = userMemberships.map((m) => m.organizationId);
-
-					if (orgIds.length === 0) {
-						return {
-							totalEvents: 0,
-							dailyUsage: [],
-							dailyUsageByType: [],
-							eventTypeBreakdown: [],
-							websiteCount: 0,
-							dateRange: { startDate, endDate },
-						};
-					}
-
-					const userWebsites = await context.db.query.websites.findMany({
-						where: inArray(websites.organizationId, orgIds),
-						columns: { id: true },
-					});
-					websiteIds = userWebsites.map((site) => site.id);
-				}
+				const userWebsites = await context.db.query.websites.findMany({
+					where: eq(websites.organizationId, resolvedOrgId),
+					columns: { id: true },
+				});
+				const websiteIds = userWebsites.map((site) => site.id);
 
 				if (websiteIds.length === 0) {
 					return {
@@ -245,13 +211,13 @@ export const billingRouter = {
 
 				logger.info(
 					{
-						userId: context.user.id,
-						organizationId,
+						userId: context.user?.id,
+						organizationId: resolvedOrgId,
 						websiteCount: websiteIds.length,
 						totalEvents,
 						dateRange: { startDate, endDate },
 					},
-					`Billing usage calculated for user ${context.user.id}: ${totalEvents} events across ${websiteIds.length} websites`
+					`Billing usage calculated: ${totalEvents} events across ${websiteIds.length} websites`
 				);
 
 				return {
@@ -267,13 +233,11 @@ export const billingRouter = {
 					error instanceof Error ? error.message : String(error);
 
 				logger.error(
-					{ error: errorMessage, userId: context.user.id, organizationId },
-					`Failed to fetch billing usage for user ${context.user.id}: ${errorMessage}`
+					{ error: errorMessage, userId: context.user?.id, organizationId: resolvedOrgId },
+					`Failed to fetch billing usage: ${errorMessage}`
 				);
 
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to fetch billing usage data",
-				});
+				throw rpcError.internal("Failed to fetch billing usage data");
 			}
 		}),
 };

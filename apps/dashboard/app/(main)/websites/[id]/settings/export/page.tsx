@@ -48,7 +48,7 @@ export default function ExportPage() {
 	const [useCustomRange, setUseCustomRange] = useState(false);
 
 	const exportMutation = useMutation({
-		...orpc.export.download.mutationOptions(),
+		...orpc.websites.exportDownload.mutationOptions(),
 	});
 
 	const handleExport = useCallback(() => {

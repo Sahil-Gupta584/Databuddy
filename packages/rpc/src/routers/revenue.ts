@@ -1,63 +1,15 @@
-import { websitesApi } from "@databuddy/auth";
-import { and, db, eq, isNull, revenueConfig, websites } from "@databuddy/db";
-import { logger } from "@databuddy/shared/logger";
+import { and, db, eq, isNull, revenueConfig } from "@databuddy/db";
 import { createId } from "@databuddy/shared/utils/ids";
-import { ORPCError } from "@orpc/server";
 import { z } from "zod";
-import type { Context } from "../orpc";
+import { rpcError } from "../errors";
 import { protectedProcedure } from "../orpc";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import { withWorkspace } from "../procedures/with-workspace";
 
 function generateHash(): string {
 	const bytes = crypto.getRandomValues(new Uint8Array(24));
 	return Array.from(bytes)
 		.map((b) => b.toString(16).padStart(2, "0"))
 		.join("");
-}
-
-async function getOwnerId(
-	ctx: Context & { user: NonNullable<Context["user"]> },
-	websiteId?: string
-): Promise<string> {
-	if (websiteId) {
-		const website = await db.query.websites.findFirst({
-			where: eq(websites.id, websiteId),
-			columns: { organizationId: true },
-		});
-		if (website) {
-			return website.organizationId;
-		}
-	}
-
-	const activeOrgId = (ctx.session as { activeOrganizationId?: string })
-		?.activeOrganizationId;
-	if (activeOrgId) {
-		return activeOrgId;
-	}
-
-	return ctx.user.id;
-}
-
-async function hasManagePermission(
-	headers: Headers,
-	organizationId: string
-): Promise<boolean> {
-	try {
-		const { success } = await websitesApi.hasPermission({
-			headers,
-			body: {
-				organizationId,
-				permissions: { website: ["configure"] },
-			},
-		});
-		return success;
-	} catch (error) {
-		logger.error(
-			{ error, organizationId },
-			"Error checking revenue manage permissions"
-		);
-		return false;
-	}
 }
 
 const revenueOutputSchema = z.record(z.string(), z.unknown());
@@ -75,26 +27,28 @@ export const revenueRouter = {
 		.input(z.object({ websiteId: z.string().optional() }))
 		.output(revenueOutputSchema.nullable())
 		.handler(async ({ context, input }) => {
-			const ownerId = await getOwnerId(context, input.websiteId);
-
-			if (input.websiteId) {
-				await authorizeWebsiteAccess(context, input.websiteId, "read");
-			} else if (!(await hasManagePermission(context.headers, ownerId))) {
-				throw new ORPCError("FORBIDDEN", {
-					message: "Missing permissions",
+			const workspace = input.websiteId
+				? await withWorkspace(context, {
+					websiteId: input.websiteId,
+					permissions: ["read"],
+				})
+				: await withWorkspace(context, {
+					resource: "website",
+					permissions: ["configure"],
 				});
-			}
+
+			const ownerId = workspace.organizationId;
 
 			const config = await context.db.query.revenueConfig.findFirst({
 				where: input.websiteId
 					? and(
-							eq(revenueConfig.ownerId, ownerId),
-							eq(revenueConfig.websiteId, input.websiteId)
-						)
+						eq(revenueConfig.ownerId, ownerId),
+						eq(revenueConfig.websiteId, input.websiteId)
+					)
 					: and(
-							eq(revenueConfig.ownerId, ownerId),
-							isNull(revenueConfig.websiteId)
-						),
+						eq(revenueConfig.ownerId, ownerId),
+						isNull(revenueConfig.websiteId)
+					),
 			});
 
 			if (!config) {
@@ -131,23 +85,26 @@ export const revenueRouter = {
 			})
 		)
 		.output(revenueOutputSchema)
-		.handler(async ({ context, input, errors }) => {
-			const ownerId = await getOwnerId(context, input.websiteId);
+		.handler(async ({ context, input }) => {
+			const workspace = await withWorkspace(context, {
+				...(input.websiteId
+					? { websiteId: input.websiteId }
+					: { resource: "website" as const }),
+				permissions: ["configure"],
+			});
 
-			if (!(await hasManagePermission(context.headers, ownerId))) {
-				throw errors.FORBIDDEN({ message: "Missing permissions" });
-			}
+			const ownerId = workspace.organizationId;
 
 			const existing = await context.db.query.revenueConfig.findFirst({
 				where: input.websiteId
 					? and(
-							eq(revenueConfig.ownerId, ownerId),
-							eq(revenueConfig.websiteId, input.websiteId)
-						)
+						eq(revenueConfig.ownerId, ownerId),
+						eq(revenueConfig.websiteId, input.websiteId)
+					)
 					: and(
-							eq(revenueConfig.ownerId, ownerId),
-							isNull(revenueConfig.websiteId)
-						),
+						eq(revenueConfig.ownerId, ownerId),
+						isNull(revenueConfig.websiteId)
+					),
 			});
 
 			if (existing) {
@@ -207,27 +164,30 @@ export const revenueRouter = {
 		})
 		.input(z.object({ websiteId: z.string().optional() }))
 		.output(z.object({ webhookHash: z.string() }))
-		.handler(async ({ context, input, errors }) => {
-			const ownerId = await getOwnerId(context, input.websiteId);
+		.handler(async ({ context, input }) => {
+			const workspace = await withWorkspace(context, {
+				...(input.websiteId
+					? { websiteId: input.websiteId }
+					: { resource: "website" as const }),
+				permissions: ["configure"],
+			});
 
-			if (!(await hasManagePermission(context.headers, ownerId))) {
-				throw errors.FORBIDDEN({ message: "Missing permissions" });
-			}
+			const ownerId = workspace.organizationId;
 
 			const existing = await context.db.query.revenueConfig.findFirst({
 				where: input.websiteId
 					? and(
-							eq(revenueConfig.ownerId, ownerId),
-							eq(revenueConfig.websiteId, input.websiteId)
-						)
+						eq(revenueConfig.ownerId, ownerId),
+						eq(revenueConfig.websiteId, input.websiteId)
+					)
 					: and(
-							eq(revenueConfig.ownerId, ownerId),
-							isNull(revenueConfig.websiteId)
-						),
+						eq(revenueConfig.ownerId, ownerId),
+						isNull(revenueConfig.websiteId)
+					),
 			});
 
 			if (!existing) {
-				throw errors.NOT_FOUND({ message: "Revenue config not found" });
+				throw rpcError.notFound("Revenue config");
 			}
 
 			const newHash = generateHash();
@@ -250,27 +210,30 @@ export const revenueRouter = {
 		})
 		.input(z.object({ websiteId: z.string().optional() }))
 		.output(z.object({ deleted: z.literal(true) }))
-		.handler(async ({ context, input, errors }) => {
-			const ownerId = await getOwnerId(context, input.websiteId);
+		.handler(async ({ context, input }) => {
+			const workspace = await withWorkspace(context, {
+				...(input.websiteId
+					? { websiteId: input.websiteId }
+					: { resource: "website" as const }),
+				permissions: ["configure"],
+			});
 
-			if (!(await hasManagePermission(context.headers, ownerId))) {
-				throw errors.FORBIDDEN({ message: "Missing permissions" });
-			}
+			const ownerId = workspace.organizationId;
 
 			const existing = await context.db.query.revenueConfig.findFirst({
 				where: input.websiteId
 					? and(
-							eq(revenueConfig.ownerId, ownerId),
-							eq(revenueConfig.websiteId, input.websiteId)
-						)
+						eq(revenueConfig.ownerId, ownerId),
+						eq(revenueConfig.websiteId, input.websiteId)
+					)
 					: and(
-							eq(revenueConfig.ownerId, ownerId),
-							isNull(revenueConfig.websiteId)
-						),
+						eq(revenueConfig.ownerId, ownerId),
+						isNull(revenueConfig.websiteId)
+					),
 			});
 
 			if (!existing) {
-				throw errors.NOT_FOUND({ message: "Revenue config not found" });
+				throw rpcError.notFound("Revenue config");
 			}
 
 			await context.db

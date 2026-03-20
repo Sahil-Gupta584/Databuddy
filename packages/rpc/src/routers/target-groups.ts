@@ -4,7 +4,6 @@ import {
 	eq,
 	flagsToTargetGroups,
 	isNull,
-	member,
 	targetGroups,
 } from "@databuddy/db";
 import {
@@ -15,12 +14,16 @@ import {
 } from "@databuddy/redis";
 import { userRuleSchema } from "@databuddy/shared/flags";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { requireFeature, requireUsageWithinLimit } from "../types/billing";
-import { authorizeWebsiteAccess, isFullyAuthorized } from "../utils/auth";
+import {
+	isFullyAuthorized,
+	withWebsiteRead,
+	withWorkspace,
+} from "../procedures/with-workspace";
+import { requireFeatureWithLimit } from "../types/billing";
 
 const targetGroupsCache = createDrizzleCache({
 	redis,
@@ -105,7 +108,11 @@ export const targetGroupsRouter = {
 				ttl: CACHE_DURATION,
 				tables: ["target_groups"],
 				queryFn: async () => {
-					await authorizeWebsiteAccess(context, input.websiteId, "read");
+					await withWorkspace(context, {
+						websiteId: input.websiteId,
+						permissions: ["read"],
+						allowPublicAccess: true,
+					});
 
 					const groupsList = await context.db
 						.select()
@@ -145,8 +152,8 @@ export const targetGroupsRouter = {
 		})
 		.input(getByIdSchema)
 		.output(targetGroupOutputSchema)
+		.use(withWebsiteRead)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
 
 			const cacheKey = `byId:${input.id}:website:${input.websiteId}`;
 
@@ -168,9 +175,7 @@ export const targetGroupsRouter = {
 						.limit(1);
 
 					if (result.length === 0) {
-						throw new ORPCError("NOT_FOUND", {
-							message: "Target group not found",
-						});
+						throw rpcError.notFound("Target group", input.id);
 					}
 
 					// Check if user is fully authorized
@@ -201,45 +206,13 @@ export const targetGroupsRouter = {
 		.input(createSchema)
 		.output(targetGroupOutputSchema)
 		.handler(async ({ context, input }) => {
-			const website = await authorizeWebsiteAccess(
-				context,
-				input.websiteId,
-				"update"
-			);
+			const workspace = await withWorkspace(context, {
+				websiteId: input.websiteId,
+				permissions: ["update"],
+			});
 
-			let createdBy: string;
-			if (context.user) {
-				createdBy = context.user.id;
-			} else if (context.apiKey) {
-				if (!website.organizationId) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Website must belong to a workspace",
-					});
-				}
-				const orgId = context.apiKey.organizationId ?? website.organizationId;
-				const [ownerRow] = await context.db
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
-					)
-					.limit(1);
-				if (!ownerRow) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Could not resolve organization owner for API key",
-					});
-				}
-				createdBy = ownerRow.userId;
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
-				});
-			}
+			const createdBy = await workspace.getCreatedBy();
 
-			// Check if target groups feature is available on the plan
-			requireFeature(context.billing?.planId, GATED_FEATURES.TARGET_GROUPS);
-
-			// Check current target group count against plan limit
 			const existingGroups = await context.db
 				.select({ id: targetGroups.id })
 				.from(targetGroups)
@@ -250,9 +223,8 @@ export const targetGroupsRouter = {
 					)
 				);
 
-			// Enforce plan limit before creating new target group
-			requireUsageWithinLimit(
-				context.billing?.planId,
+			requireFeatureWithLimit(
+				workspace.plan,
 				GATED_FEATURES.TARGET_GROUPS,
 				existingGroups.length
 			);
@@ -296,14 +268,15 @@ export const targetGroupsRouter = {
 				.limit(1);
 
 			if (existingGroup.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Target group not found",
-				});
+				throw rpcError.notFound("Target group", input.id);
 			}
 
 			const group = existingGroup[0];
 
-			await authorizeWebsiteAccess(context, group.websiteId, "update");
+			await withWorkspace(context, {
+				websiteId: group.websiteId,
+				permissions: ["update"],
+			});
 
 			const { id, ...updates } = input;
 			const [updatedGroup] = await context.db
@@ -344,14 +317,15 @@ export const targetGroupsRouter = {
 				.limit(1);
 
 			if (existingGroup.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Target group not found",
-				});
+				throw rpcError.notFound("Target group", input.id);
 			}
 
 			const group = existingGroup[0];
 
-			await authorizeWebsiteAccess(context, group.websiteId, "delete");
+			await withWorkspace(context, {
+				websiteId: group.websiteId,
+				permissions: ["delete"],
+			});
 
 			// Remove all flag associations before soft-deleting the group
 			await context.db

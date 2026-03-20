@@ -5,108 +5,16 @@ import {
 	eq,
 	gt,
 	invitation,
-	member,
 	organization,
-	websites,
 } from "@databuddy/db";
 import { logger } from "@databuddy/shared/logger";
 import { getPendingInvitationsSchema } from "@databuddy/validation";
-import { ORPCError } from "@orpc/server";
 import { Autumn as autumn } from "autumn-js";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { authorizeWebsiteAccess, checkOrgPermission } from "../utils/auth";
-
-/**
- * Gets the billing owner ID for the current context.
- * If in an organization, returns the org owner's ID.
- * Otherwise, returns the current user's ID.
- */
-async function getBillingOwnerId(
-	userId: string,
-	activeOrganizationId: string | null | undefined
-): Promise<{
-	customerId: string;
-	isOrganization: boolean;
-	canUserUpgrade: boolean;
-}> {
-	let customerId = userId;
-	let isOrganization = false;
-	let canUserUpgrade = true;
-
-	// If user has an active organization, get the org owner's billing
-	if (activeOrganizationId) {
-		const [orgOwner, currentUserMember] = await Promise.all([
-			db
-				.select({ ownerId: member.userId })
-				.from(member)
-				.where(
-					and(
-						eq(member.organizationId, activeOrganizationId),
-						eq(member.role, "owner")
-					)
-				)
-				.limit(1),
-			db
-				.select({ role: member.role })
-				.from(member)
-				.where(
-					and(
-						eq(member.organizationId, activeOrganizationId),
-						eq(member.userId, userId)
-					)
-				)
-				.limit(1),
-		]);
-
-		if (orgOwner.at(0)) {
-			const owner = orgOwner[0];
-			customerId = owner.ownerId;
-			isOrganization = true;
-			const role = currentUserMember.at(0)?.role;
-			canUserUpgrade =
-				owner.ownerId === userId || role === "admin" || role === "owner";
-		}
-	}
-
-	return { customerId, isOrganization, canUserUpgrade };
-}
-
-/**
- * Gets the billing owner ID for a specific website (workspace owner).
- */
-async function getBillingOwnerFromWebsite(websiteId: string): Promise<{
-	customerId: string | null;
-	isOrganization: boolean;
-}> {
-	const [website] = await db
-		.select({
-			organizationId: websites.organizationId,
-		})
-		.from(websites)
-		.where(eq(websites.id, websiteId))
-		.limit(1);
-
-	if (!website?.organizationId) {
-		return { customerId: null, isOrganization: false };
-	}
-
-	const [orgOwner] = await db
-		.select({ ownerId: member.userId })
-		.from(member)
-		.where(
-			and(
-				eq(member.organizationId, website.organizationId),
-				eq(member.role, "owner")
-			)
-		)
-		.limit(1);
-
-	return {
-		customerId: orgOwner?.ownerId ?? null,
-		isOrganization: true,
-	};
-}
+import { withWorkspace } from "../procedures/with-workspace";
+import { getBillingOwner } from "../utils/billing";
 
 const updateAvatarSeedSchema = z.object({
 	organizationId: z.string().min(1, "Organization ID is required"),
@@ -128,13 +36,11 @@ export const organizationsRouter = {
 		.input(updateAvatarSeedSchema)
 		.output(z.object({ organization: orgOutputSchema }))
 		.handler(async ({ input, context }) => {
-			await checkOrgPermission(
-				context,
-				input.organizationId,
-				"organization",
-				"update",
-				"You do not have permission to update this organization."
-			);
+			await withWorkspace(context, {
+				organizationId: input.organizationId,
+				resource: "organization",
+				permissions: ["update"],
+			});
 
 			const [org] = await db
 				.select()
@@ -143,9 +49,7 @@ export const organizationsRouter = {
 				.limit(1);
 
 			if (!org) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Organization not found.",
-				});
+				throw rpcError.notFound("Organization", input.organizationId);
 			}
 
 			const [updatedOrganization] = await db
@@ -168,13 +72,11 @@ export const organizationsRouter = {
 		.input(getPendingInvitationsSchema)
 		.output(z.array(orgOutputSchema))
 		.handler(async ({ input, context }) => {
-			await checkOrgPermission(
-				context,
-				input.organizationId,
-				"organization",
-				"read",
-				"You do not have permission to view invitations for this organization."
-			);
+			await withWorkspace(context, {
+				organizationId: input.organizationId,
+				resource: "organization",
+				permissions: ["read"],
+			});
 
 			const [org] = await db
 				.select()
@@ -183,9 +85,7 @@ export const organizationsRouter = {
 				.limit(1);
 
 			if (!org) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Organization not found.",
-				});
+				throw rpcError.notFound("Organization", input.organizationId);
 			}
 
 			try {
@@ -212,10 +112,7 @@ export const organizationsRouter = {
 
 				return invitations;
 			} catch (error) {
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to fetch pending invitations",
-					cause: error,
-				});
+				throw rpcError.internal("Failed to fetch pending invitations");
 			}
 		}),
 
@@ -281,11 +178,8 @@ export const organizationsRouter = {
 		})
 		.output(z.record(z.string(), z.unknown()))
 		.handler(async ({ context }) => {
-			const activeOrgId = (
-				context.session as { activeOrganizationId?: string | null }
-			)?.activeOrganizationId;
 			const { customerId, isOrganization, canUserUpgrade } =
-				await getBillingOwnerId(context.user.id, activeOrgId);
+				await getBillingOwner(context.user.id, context.organizationId);
 
 			try {
 				const checkResult = await autumn.check({
@@ -296,9 +190,7 @@ export const organizationsRouter = {
 				const data = checkResult.data;
 
 				if (!data) {
-					throw new ORPCError("INTERNAL_SERVER_ERROR", {
-						message: "Failed to retrieve usage data",
-					});
+					throw rpcError.internal("Failed to retrieve usage data");
 				}
 				const used = data.usage ?? 0;
 				const usageLimit = data.usage_limit ?? 0;
@@ -322,10 +214,7 @@ export const organizationsRouter = {
 				};
 			} catch (error) {
 				logger.error({ error }, "Failed to check usage");
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to retrieve usage data",
-					cause: error,
-				});
+				throw rpcError.internal("Failed to retrieve usage data");
 			}
 		}),
 
@@ -354,30 +243,31 @@ export const organizationsRouter = {
 			let activeOrgId: string | null | undefined;
 
 			if (input?.websiteId) {
-				await authorizeWebsiteAccess(context, input.websiteId, "read");
+				const workspace = await withWorkspace(context, {
+					websiteId: input.websiteId,
+					permissions: ["read"],
+					allowPublicAccess: true,
+				});
 				try {
-					const websiteOwner = await getBillingOwnerFromWebsite(
-						input.websiteId
+					const billing = await getBillingOwner(
+						workspace.user?.id ?? "",
+						workspace.organizationId
 					);
-					customerId = websiteOwner.customerId;
-					isOrganization = websiteOwner.isOrganization;
+					customerId = billing.customerId;
+					isOrganization = billing.isOrganization;
 					canUserUpgrade = false;
 				} catch (error) {
 					logger.error(
 						{ error, websiteId: input.websiteId },
 						"Error fetching billing owner from website"
 					);
-					throw new ORPCError("INTERNAL_SERVER_ERROR", {
-						message: "Failed to retrieve billing information",
-					});
+					throw rpcError.internal("Failed to retrieve billing information");
 				}
 			} else if (context.user) {
-				activeOrgId = (
-					context.session as { activeOrganizationId?: string | null }
-				)?.activeOrganizationId;
-				const userBilling = await getBillingOwnerId(
+				activeOrgId = context.organizationId;
+				const userBilling = await getBillingOwner(
 					context.user.id,
-					activeOrgId
+					context.organizationId
 				);
 				customerId = userBilling.customerId;
 				isOrganization = userBilling.isOrganization;
@@ -386,14 +276,14 @@ export const organizationsRouter = {
 
 			const debugInfo = isDev
 				? {
-						_debug: {
-							userId: context.user?.id ?? null,
-							activeOrganizationId: activeOrgId ?? null,
-							customerId,
-							websiteId: input?.websiteId ?? null,
-							sessionId: context.session?.id ?? null,
-						},
-					}
+					_debug: {
+						userId: context.user?.id ?? null,
+						activeOrganizationId: activeOrgId ?? null,
+						customerId,
+						websiteId: input?.websiteId ?? null,
+						sessionId: context.session?.id ?? null,
+					},
+				}
 				: {};
 
 			// No customer ID means we can't look up billing

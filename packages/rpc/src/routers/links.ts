@@ -4,7 +4,6 @@ import {
 	eq,
 	isUniqueViolationFor,
 	links,
-	member,
 } from "@databuddy/db";
 import {
 	type CachedLink,
@@ -12,10 +11,10 @@ import {
 	setCachedLink,
 } from "@databuddy/redis";
 import { logger } from "@databuddy/shared/logger";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import { protectedProcedure } from "../orpc";
 import {
 	withLinksAccess,
@@ -103,9 +102,15 @@ const linkOutputSchema = z.object({
 	updatedAt: z.coerce.date(),
 });
 
-interface LinkRecord {
+function validateHttpUrl(url: string): void {
+	const parsed = new URL(url);
+	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+		throw rpcError.badRequest("Target URL must be an absolute HTTP or HTTPS URL");
+	}
+}
+
+function toCachedLink(link: {
 	id: string;
-	slug: string;
 	targetUrl: string;
 	expiresAt: Date | null;
 	expiredRedirectUrl: string | null;
@@ -115,18 +120,7 @@ interface LinkRecord {
 	ogVideoUrl: string | null;
 	iosUrl: string | null;
 	androidUrl: string | null;
-}
-
-function validateHttpUrl(url: string): void {
-	const parsed = new URL(url);
-	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-		throw new ORPCError("BAD_REQUEST", {
-			message: "Target URL must be an absolute HTTP or HTTPS URL",
-		});
-	}
-}
-
-function toCachedLink(link: LinkRecord): CachedLink {
+}): CachedLink {
 	return {
 		id: link.id,
 		targetUrl: link.targetUrl,
@@ -201,9 +195,7 @@ export const linksRouter = {
 				.limit(1);
 
 			if (result.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Link not found",
-				});
+				throw rpcError.notFound("link", input.id);
 			}
 
 			return result[0];
@@ -221,63 +213,13 @@ export const linksRouter = {
 		.input(createLinkSchema)
 		.output(linkOutputSchema)
 		.handler(async ({ context, input }) => {
-			await withLinksAccess(context, {
+			const workspace = await withLinksAccess(context, {
 				organizationId: input.organizationId,
 				permission: "create",
 			});
 
-			let userId: string;
-			if (context.user) {
-				userId = context.user.id;
-			} else if (context.apiKey) {
-				// For API keys: use key's userId or resolve org owner
-				if (context.apiKey.userId) {
-					userId = context.apiKey.userId;
-				} else if (context.apiKey.organizationId) {
-					const [ownerRow] = await context.db
-						.select({ userId: member.userId })
-						.from(member)
-						.where(
-							and(
-								eq(member.organizationId, context.apiKey.organizationId),
-								eq(member.role, "owner")
-							)
-						)
-						.limit(1);
-					if (!ownerRow) {
-						throw new ORPCError("FORBIDDEN", {
-							message: "Could not resolve organization owner for API key",
-						});
-					}
-					userId = ownerRow.userId;
-				} else {
-					throw new ORPCError("UNAUTHORIZED", {
-						message: "API key must be scoped to user or organization",
-					});
-				}
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
-				});
-			}
-
 			validateHttpUrl(input.targetUrl);
-
-			const linkValues = {
-				organizationId: input.organizationId,
-				createdBy: userId,
-				name: input.name,
-				targetUrl: input.targetUrl,
-				expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
-				expiredRedirectUrl: input.expiredRedirectUrl ?? null,
-				ogTitle: input.ogTitle ?? null,
-				ogDescription: input.ogDescription ?? null,
-				ogImageUrl: input.ogImageUrl ?? null,
-				ogVideoUrl: input.ogVideoUrl ?? null,
-				iosUrl: input.iosUrl ?? null,
-				androidUrl: input.androidUrl ?? null,
-				externalId: input.externalId ?? null,
-			};
+			const createdBy = await workspace.getCreatedBy();
 
 			const slugsToTry = input.slug
 				? [input.slug]
@@ -285,10 +227,25 @@ export const linksRouter = {
 
 			for (const slug of slugsToTry) {
 				try {
-					const linkId = randomUUIDv7();
 					const [newLink] = await context.db
 						.insert(links)
-						.values({ id: linkId, slug, ...linkValues })
+						.values({
+							id: randomUUIDv7(),
+							slug,
+							organizationId: input.organizationId,
+							createdBy,
+							name: input.name,
+							targetUrl: input.targetUrl,
+							expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+							expiredRedirectUrl: input.expiredRedirectUrl ?? null,
+							ogTitle: input.ogTitle ?? null,
+							ogDescription: input.ogDescription ?? null,
+							ogImageUrl: input.ogImageUrl ?? null,
+							ogVideoUrl: input.ogVideoUrl ?? null,
+							iosUrl: input.iosUrl ?? null,
+							androidUrl: input.androidUrl ?? null,
+							externalId: input.externalId ?? null,
+						})
 						.returning();
 
 					await setCachedLink(slug, toCachedLink(newLink)).catch((err) =>
@@ -304,16 +261,12 @@ export const linksRouter = {
 						throw error;
 					}
 					if (input.slug) {
-						throw new ORPCError("CONFLICT", {
-							message: "This slug is already taken",
-						});
+						throw rpcError.conflict("This slug is already taken");
 					}
 				}
 			}
 
-			throw new ORPCError("INTERNAL_SERVER_ERROR", {
-				message: "Failed to generate unique slug",
-			});
+			throw rpcError.internal("Failed to generate unique slug");
 		}),
 
 	update: protectedProcedure
@@ -335,9 +288,7 @@ export const linksRouter = {
 				.limit(1);
 
 			if (existingLink.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Link not found",
-				});
+				throw rpcError.notFound("link", input.id);
 			}
 
 			const link = existingLink[0];
@@ -389,9 +340,7 @@ export const linksRouter = {
 				return updatedLink;
 			} catch (error) {
 				if (isUniqueViolationFor(error, "links_slug_unique")) {
-					throw new ORPCError("CONFLICT", {
-						message: "This slug is already taken",
-					});
+					throw rpcError.conflict("This slug is already taken");
 				}
 				throw error;
 			}
@@ -419,9 +368,7 @@ export const linksRouter = {
 				.limit(1);
 
 			if (existingLink.length === 0) {
-				throw new ORPCError("NOT_FOUND", {
-					message: "Link not found",
-				});
+				throw rpcError.notFound("link", input.id);
 			}
 
 			const link = existingLink[0];
@@ -431,7 +378,6 @@ export const linksRouter = {
 				permission: "delete",
 			});
 
-			// Invalidate cache first, then delete from DB
 			try {
 				await invalidateLinkCache(link.slug);
 			} catch (error) {
@@ -439,9 +385,7 @@ export const linksRouter = {
 					{ slug: link.slug, linkId: input.id, error: String(error) },
 					"Failed to invalidate link cache before delete"
 				);
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Failed to invalidate cache. Link not deleted.",
-				});
+				throw rpcError.internal("Failed to invalidate cache. Link not deleted.");
 			}
 
 			// Hard delete the link

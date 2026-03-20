@@ -1,17 +1,20 @@
-import { and, desc, eq, goals, inArray, isNull, member } from "@databuddy/db";
+import { and, desc, eq, goals, inArray, isNull } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import {
 	type AnalyticsStep,
 	getTotalWebsiteUsers,
 	processGoalAnalytics,
 } from "../lib/analytics-utils";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { requireFeature, requireUsageWithinLimit } from "../types/billing";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import {
+	withWebsiteRead,
+	withWorkspace,
+} from "../procedures/with-workspace";
+import { requireFeatureWithLimit } from "../types/billing";
 
 const cache = createDrizzleCache({ redis, namespace: "goals" });
 
@@ -78,8 +81,8 @@ export const goalsRouter = {
 		})
 		.input(z.object({ websiteId: z.string() }))
 		.output(z.array(goalOutputSchema))
+		.use(withWebsiteRead)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
 			return context.db
 				.select()
 				.from(goals)
@@ -100,8 +103,8 @@ export const goalsRouter = {
 		})
 		.input(z.object({ id: z.string(), websiteId: z.string() }))
 		.output(goalOutputSchema)
-		.handler(async ({ context, input, errors }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
+		.use(withWebsiteRead)
+		.handler(async ({ context, input }) => {
 			const [goal] = await context.db
 				.select()
 				.from(goals)
@@ -115,10 +118,7 @@ export const goalsRouter = {
 				.limit(1);
 
 			if (!goal) {
-				throw errors.NOT_FOUND({
-					message: "Goal not found",
-					data: { resourceType: "goal", resourceId: input.id },
-				});
+				throw rpcError.notFound("goal", input.id);
 			}
 			return goal;
 		}),
@@ -145,16 +145,11 @@ export const goalsRouter = {
 		)
 		.output(goalOutputSchema)
 		.handler(async ({ context, input }) => {
-			const website = await authorizeWebsiteAccess(
-				context,
-				input.websiteId,
-				"update"
-			);
+			const workspace = await withWorkspace(context, {
+				websiteId: input.websiteId,
+				permissions: ["update"],
+			});
 
-			// Check if goals feature is available on the plan
-			requireFeature(context.billing?.planId, GATED_FEATURES.GOALS);
-
-			// Check current goal count against plan limit
 			const existingGoals = await context.db
 				.select({ id: goals.id })
 				.from(goals)
@@ -162,41 +157,13 @@ export const goalsRouter = {
 					and(eq(goals.websiteId, input.websiteId), isNull(goals.deletedAt))
 				);
 
-			// Enforce plan limit before creating new goal
-			requireUsageWithinLimit(
-				context.billing?.planId,
+			requireFeatureWithLimit(
+				workspace.plan,
 				GATED_FEATURES.GOALS,
 				existingGoals.length
 			);
 
-			let createdBy: string;
-			if (context.user) {
-				createdBy = context.user.id;
-			} else if (context.apiKey) {
-				if (!website.organizationId) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Website must belong to a workspace",
-					});
-				}
-				const orgId = context.apiKey.organizationId ?? website.organizationId;
-				const [ownerRow] = await context.db
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
-					)
-					.limit(1);
-				if (!ownerRow) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Could not resolve organization owner for API key",
-					});
-				}
-				createdBy = ownerRow.userId;
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
-				});
-			}
+			const createdBy = await workspace.getCreatedBy();
 
 			const [newGoal] = await context.db
 				.insert(goals)
@@ -239,7 +206,7 @@ export const goalsRouter = {
 			})
 		)
 		.output(goalOutputSchema)
-		.handler(async ({ context, input, errors }) => {
+		.handler(async ({ context, input }) => {
 			const [existingGoal] = await context.db
 				.select({ websiteId: goals.websiteId })
 				.from(goals)
@@ -247,13 +214,13 @@ export const goalsRouter = {
 				.limit(1);
 
 			if (!existingGoal) {
-				throw errors.NOT_FOUND({
-					message: "Goal not found",
-					data: { resourceType: "goal", resourceId: input.id },
-				});
+				throw rpcError.notFound("goal", input.id);
 			}
 
-			await authorizeWebsiteAccess(context, existingGoal.websiteId, "update");
+			await withWorkspace(context, {
+				websiteId: existingGoal.websiteId,
+				permissions: ["update"],
+			});
 
 			const { id, ...updates } = input;
 			const [updatedGoal] = await context.db
@@ -275,7 +242,7 @@ export const goalsRouter = {
 		})
 		.input(z.object({ id: z.string() }))
 		.output(successOutputSchema)
-		.handler(async ({ context, input, errors }) => {
+		.handler(async ({ context, input }) => {
 			const [existingGoal] = await context.db
 				.select({ websiteId: goals.websiteId })
 				.from(goals)
@@ -283,13 +250,13 @@ export const goalsRouter = {
 				.limit(1);
 
 			if (!existingGoal) {
-				throw errors.NOT_FOUND({
-					message: "Goal not found",
-					data: { resourceType: "goal", resourceId: input.id },
-				});
+				throw rpcError.notFound("goal", input.id);
 			}
 
-			await authorizeWebsiteAccess(context, existingGoal.websiteId, "delete");
+			await withWorkspace(context, {
+				websiteId: existingGoal.websiteId,
+				permissions: ["delete"],
+			});
 
 			await context.db
 				.update(goals)
@@ -317,8 +284,8 @@ export const goalsRouter = {
 			})
 		)
 		.output(z.record(z.string(), z.unknown()))
-		.handler(async ({ context, input, errors }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
+		.use(withWebsiteRead)
+		.handler(async ({ context, input }) => {
 
 			const { startDate, endDate } =
 				input.startDate && input.endDate
@@ -338,10 +305,7 @@ export const goalsRouter = {
 				.limit(1);
 
 			if (!goal) {
-				throw errors.NOT_FOUND({
-					message: "Goal not found",
-					data: { resourceType: "goal", resourceId: input.goalId },
-				});
+				throw rpcError.notFound("goal", input.goalId);
 			}
 
 			const effectiveStartDate = getEffectiveStartDate(
@@ -404,8 +368,8 @@ export const goalsRouter = {
 			})
 		)
 		.output(z.record(z.string(), z.any()))
+		.use(withWebsiteRead)
 		.handler(async ({ context, input }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
 
 			const { startDate, endDate } =
 				input.startDate && input.endDate
@@ -450,10 +414,10 @@ export const goalsRouter = {
 					const filters = (goal.filters as Filter[]) || [];
 					const totalUsers = goal.ignoreHistoricData
 						? await getTotalWebsiteUsers(
-								input.websiteId,
-								effectiveStartDate,
-								endDate
-							)
+							input.websiteId,
+							effectiveStartDate,
+							endDate
+						)
 						: baseTotalUsers;
 
 					try {

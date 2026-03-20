@@ -1,89 +1,18 @@
 import { getApiKeyFromHeader } from "@databuddy/api-keys/resolve";
 import { auth, type User } from "@databuddy/auth";
-import { and, db, eq, member } from "@databuddy/db";
-import { os as createOS, ORPCError } from "@orpc/server";
-import { Autumn as autumn } from "autumn-js";
+import { db } from "@databuddy/db";
+import { os as createOS } from "@orpc/server";
 import { baseErrors } from "./errors";
 import {
 	enrichSpanWithContext,
 	recordORPCError,
 	setProcedureAttributes,
 } from "./lib/otel";
-
-/**
- * Gets the billing owner ID for the current context.
- * If in an organization, returns the org owner's ID.
- * Otherwise, returns the current user's ID.
- */
-async function getBillingOwnerId(
-	userId: string,
-	activeOrganizationId: string | null | undefined
-): Promise<{
-	customerId: string;
-	isOrganization: boolean;
-	canUserUpgrade: boolean;
-	planId: string;
-}> {
-	let customerId = userId;
-	let isOrganization = false;
-	let canUserUpgrade = true;
-
-	// If user has an active organization, get the org owner's billing
-	if (activeOrganizationId) {
-		const [orgOwnerResult, currentUserMember] = await Promise.all([
-			db
-				.select({ ownerId: member.userId })
-				.from(member)
-				.where(
-					and(
-						eq(member.organizationId, activeOrganizationId),
-						eq(member.role, "owner")
-					)
-				)
-				.limit(1),
-			db
-				.select({ role: member.role })
-				.from(member)
-				.where(
-					and(
-						eq(member.organizationId, activeOrganizationId),
-						eq(member.userId, userId)
-					)
-				)
-				.limit(1),
-		]);
-
-		const orgOwner = orgOwnerResult.at(0);
-		if (orgOwner) {
-			customerId = orgOwner.ownerId;
-			isOrganization = true;
-			const role = currentUserMember.at(0)?.role;
-			canUserUpgrade =
-				orgOwner.ownerId === userId || role === "admin" || role === "owner";
-		}
-	}
-
-	// Get the plan from Autumn
-	let planId = "free";
-	try {
-		const customerResult = await autumn.customers.get(customerId);
-		const customer = customerResult.data;
-
-		if (customer) {
-			const activeProduct = customer.products?.find(
-				(p) => p.status === "active"
-			);
-			if (activeProduct?.id) {
-				planId = String(activeProduct.id).toLowerCase();
-			}
-		}
-	} catch {
-		// Fallback to free plan on error
-		planId = "free";
-	}
-
-	return { customerId, isOrganization, canUserUpgrade, planId };
-}
+import {
+	type BillingOwner,
+	getBillingOwner,
+	getOrganizationOwnerId,
+} from "./utils/billing";
 
 export const createRPCContext = async (opts: { headers: Headers }) => {
 	const [session, apiKey] = await Promise.all([
@@ -91,78 +20,56 @@ export const createRPCContext = async (opts: { headers: Headers }) => {
 		getApiKeyFromHeader(opts.headers),
 	]);
 
-	let billingContext:
-		| {
-				customerId: string;
-				isOrganization: boolean;
-				canUserUpgrade: boolean;
-				planId: string;
-		  }
-		| undefined;
+	const user = session?.user as User | undefined;
 
-	if (session?.user) {
+	const organizationId =
+		apiKey?.organizationId ??
+		(session?.session as { activeOrganizationId?: string | null })
+			?.activeOrganizationId ??
+		null;
+
+	let billingCache: BillingOwner | undefined;
+	let billingResolved = false;
+
+	const getBilling = async (): Promise<BillingOwner | undefined> => {
+		if (billingResolved) return billingCache;
+		billingResolved = true;
+
 		try {
-			const activeOrgId = (
-				session.session as { activeOrganizationId?: string | null }
-			)?.activeOrganizationId;
-			billingContext = await getBillingOwnerId(session.user.id, activeOrgId);
-		} catch {
-			billingContext = undefined;
-		}
-	} else if (apiKey?.organizationId) {
-		try {
-			const [orgOwner] = await db
-				.select({ ownerId: member.userId })
-				.from(member)
-				.where(
-					and(
-						eq(member.organizationId, apiKey.organizationId),
-						eq(member.role, "owner")
-					)
-				)
-				.limit(1);
-			if (orgOwner) {
-				billingContext = await getBillingOwnerId(
-					orgOwner.ownerId,
+			if (user) {
+				billingCache = await getBillingOwner(user.id, organizationId);
+			} else if (apiKey?.organizationId) {
+				const ownerId = await getOrganizationOwnerId(
 					apiKey.organizationId
 				);
+				if (ownerId) {
+					billingCache = await getBillingOwner(
+						ownerId,
+						apiKey.organizationId
+					);
+				}
 			}
 		} catch {
-			billingContext = undefined;
+			billingCache = undefined;
 		}
-	}
+
+		return billingCache;
+	};
 
 	return {
 		db,
 		auth,
 		session: session?.session,
-		user: session?.user as User | undefined,
+		user,
 		apiKey: apiKey ?? undefined,
-		billing: billingContext,
+		getBilling,
+		organizationId,
 		...opts,
 	};
 };
 
 export type Context = Awaited<ReturnType<typeof createRPCContext>>;
 
-/**
- * Throws UNAUTHORIZED if context.user is undefined.
- * Use at the start of handlers that require session auth (not API key).
- */
-export function requireUserId(context: Context): string {
-	const id = context.user?.id;
-	if (!id) {
-		throw new ORPCError("UNAUTHORIZED", {
-			message: "Session required for this operation",
-		});
-	}
-	return id;
-}
-
-/**
- * Base oRPC instance with context and type-safe errors.
- * All procedures inherit these error definitions for client-side type inference.
- */
 const os = createOS.$context<Context>().errors(baseErrors);
 
 export const publicProcedure = os.use(({ context, next }) => {
@@ -175,40 +82,30 @@ export const protectedProcedure = os.use(({ context, next, errors }) => {
 	setProcedureAttributes("protected");
 	enrichSpanWithContext(context);
 
-	if (context.user?.role === "ADMIN") {
-		return next({
-			context: {
-				...context,
-				session: context.session,
-				user: context.user,
-			},
-		});
+	if (!context.user && !context.apiKey) {
+		recordORPCError({ code: "UNAUTHORIZED" });
+		throw errors.UNAUTHORIZED();
 	}
 
-	if (context.user && context.session) {
-		return next({
-			context: {
-				...context,
-				session: context.session,
-				user: context.user,
-			},
-		});
-	}
-
-	// API key auth — scope/permission checks happen downstream (e.g. withLinksAccess)
-	if (context.apiKey) {
-		return next({
-			context: {
-				...context,
-				session: context.session,
-				user: context.user,
-			},
-		});
-	}
-
-	recordORPCError({ code: "UNAUTHORIZED" });
-	throw errors.UNAUTHORIZED();
+	return next({ context });
 });
+
+export const sessionProcedure = protectedProcedure.use(
+	({ context, next, errors }) => {
+		if (!context.user || !context.session) {
+			recordORPCError({ code: "UNAUTHORIZED" });
+			throw errors.UNAUTHORIZED({ message: "Session required" });
+		}
+
+		return next({
+			context: {
+				...context,
+				user: context.user,
+				session: context.session,
+			},
+		});
+	}
+);
 
 export const adminProcedure = protectedProcedure.use(
 	({ context, next, errors }) => {
@@ -223,13 +120,7 @@ export const adminProcedure = protectedProcedure.use(
 			throw errors.FORBIDDEN({ message: "Admin access required" });
 		}
 
-		return next({
-			context: {
-				...context,
-				session: context.session,
-				user: context.user,
-			},
-		});
+		return next({ context });
 	}
 );
 

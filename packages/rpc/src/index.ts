@@ -8,24 +8,19 @@ export {
 	setProcedureAttributes,
 	setupUncaughtErrorHandlers,
 } from "./lib/otel";
-export { type Context, createRPCContext } from "./orpc";
+export { type Context, createRPCContext, sessionProcedure } from "./orpc";
+export { rpcError } from "./errors";
 export {
 	type PermissionFor,
 	type PlanId,
 	type ResourceType,
 	type Website,
-	type WebsiteWorkspaceContext,
-	type WithWebsiteConfig,
-	type WithWorkspaceConfig,
+	type WithWorkspaceOptions,
 	type Workspace,
-	type WorkspaceContext,
+	isFullyAuthorized,
 	websiteInputSchema,
-	withAnalyticsWebsite,
-	withConfigureWebsite,
-	withDeleteWebsite,
-	withReadWebsite,
-	withUpdateWebsite,
-	withWebsite,
+	withWebsiteRead,
+	withWebsiteWrite,
 	withWorkspace,
 	workspaceInputSchema,
 } from "./procedures/with-workspace";
@@ -49,7 +44,11 @@ export {
 	isUsageWithinLimit,
 	requireAiCapability,
 	requireFeature,
+	requireFeatureWithLimit,
 	requireUsageWithinLimit,
 } from "./types/billing";
-export { authorizeWebsiteAccess } from "./utils/auth";
-export { getBillingCustomerId } from "./utils/billing";
+export {
+	type BillingOwner,
+	getBillingCustomerId,
+	getBillingOwner,
+} from "./utils/billing";

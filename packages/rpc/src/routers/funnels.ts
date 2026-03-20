@@ -4,22 +4,25 @@ import {
 	eq,
 	funnelDefinitions,
 	isNull,
-	member,
 	sql,
 } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
+import { rpcError } from "../errors";
 import {
 	type AnalyticsStep,
 	processFunnelAnalytics,
 	processFunnelAnalyticsByReferrer,
 } from "../lib/analytics-utils";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { requireFeature, requireUsageWithinLimit } from "../types/billing";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import {
+	withWebsiteRead,
+	withWebsiteWrite,
+	withWorkspace,
+} from "../procedures/with-workspace";
+import { requireFeatureWithLimit } from "../types/billing";
 
 const cache = createDrizzleCache({ redis, namespace: "funnels" });
 
@@ -134,7 +137,11 @@ export const funnelsRouter = {
 				ttl: CACHE_TTL,
 				tables: ["funnelDefinitions"],
 				queryFn: async () => {
-					await authorizeWebsiteAccess(context, input.websiteId, "read");
+					await withWorkspace(context, {
+						websiteId: input.websiteId,
+						permissions: ["read"],
+						allowPublicAccess: true,
+					});
 					return context.db
 						.select({
 							id: funnelDefinitions.id,
@@ -171,13 +178,16 @@ export const funnelsRouter = {
 		})
 		.input(z.object({ id: z.string(), websiteId: z.string() }))
 		.output(funnelOutputSchema)
-		.handler(({ context, input, errors }) =>
+		.handler(({ context, input }) =>
 			cache.withCache({
 				key: `byId:${input.id}:${input.websiteId}`,
 				ttl: CACHE_TTL,
 				tables: ["funnelDefinitions"],
 				queryFn: async () => {
-					await authorizeWebsiteAccess(context, input.websiteId, "read");
+					await withWorkspace(context, {
+						websiteId: input.websiteId,
+						permissions: ["read"],
+					});
 					const [funnel] = await context.db
 						.select()
 						.from(funnelDefinitions)
@@ -191,10 +201,7 @@ export const funnelsRouter = {
 						.limit(1);
 
 					if (!funnel) {
-						throw errors.NOT_FOUND({
-							message: "Funnel not found",
-							data: { resourceType: "funnel", resourceId: input.id },
-						});
+						throw rpcError.notFound("funnel", input.id);
 					}
 					return funnel;
 				},
@@ -222,42 +229,12 @@ export const funnelsRouter = {
 		)
 		.output(funnelOutputSchema)
 		.handler(async ({ context, input }) => {
-			const website = await authorizeWebsiteAccess(
-				context,
-				input.websiteId,
-				"update"
-			);
+			const workspace = await withWorkspace(context, {
+				websiteId: input.websiteId,
+				permissions: ["update"],
+			});
 
-			let createdBy: string;
-			if (context.user) {
-				createdBy = context.user.id;
-			} else if (context.apiKey) {
-				if (!website.organizationId) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Website must belong to a workspace",
-					});
-				}
-				const orgId = context.apiKey.organizationId ?? website.organizationId;
-				const [ownerRow] = await context.db
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
-					)
-					.limit(1);
-				if (!ownerRow) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Could not resolve organization owner for API key",
-					});
-				}
-				createdBy = ownerRow.userId;
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
-				});
-			}
-
-			requireFeature(context.billing?.planId, GATED_FEATURES.FUNNELS);
+			const createdBy = await workspace.getCreatedBy();
 
 			const existingFunnels = await context.db
 				.select({ id: funnelDefinitions.id })
@@ -269,9 +246,8 @@ export const funnelsRouter = {
 					)
 				);
 
-			// Enforce plan limit before creating new funnel
-			requireUsageWithinLimit(
-				context.billing?.planId,
+			requireFeatureWithLimit(
+				workspace.plan,
 				GATED_FEATURES.FUNNELS,
 				existingFunnels.length
 			);
@@ -315,7 +291,7 @@ export const funnelsRouter = {
 			})
 		)
 		.output(funnelOutputSchema)
-		.handler(async ({ context, input, errors }) => {
+		.handler(async ({ context, input }) => {
 			const [existingFunnel] = await context.db
 				.select({ websiteId: funnelDefinitions.websiteId })
 				.from(funnelDefinitions)
@@ -328,13 +304,13 @@ export const funnelsRouter = {
 				.limit(1);
 
 			if (!existingFunnel) {
-				throw errors.NOT_FOUND({
-					message: "Funnel not found",
-					data: { resourceType: "funnel", resourceId: input.id },
-				});
+				throw rpcError.notFound("funnel", input.id);
 			}
 
-			await authorizeWebsiteAccess(context, existingFunnel.websiteId, "update");
+			await withWorkspace(context, {
+				websiteId: existingFunnel.websiteId,
+				permissions: ["update"],
+			});
 
 			const { id, ...updates } = input;
 			const [updatedFunnel] = await context.db
@@ -359,7 +335,7 @@ export const funnelsRouter = {
 		})
 		.input(z.object({ id: z.string() }))
 		.output(successOutputSchema)
-		.handler(async ({ context, input, errors }) => {
+		.handler(async ({ context, input }) => {
 			const [existingFunnel] = await context.db
 				.select({ websiteId: funnelDefinitions.websiteId })
 				.from(funnelDefinitions)
@@ -372,13 +348,13 @@ export const funnelsRouter = {
 				.limit(1);
 
 			if (!existingFunnel) {
-				throw errors.NOT_FOUND({
-					message: "Funnel not found",
-					data: { resourceType: "funnel", resourceId: input.id },
-				});
+				throw rpcError.notFound("funnel", input.id);
 			}
 
-			await authorizeWebsiteAccess(context, existingFunnel.websiteId, "delete");
+			await withWorkspace(context, {
+				websiteId: existingFunnel.websiteId,
+				permissions: ["delete"],
+			});
 
 			await context.db
 				.update(funnelDefinitions)
@@ -412,8 +388,8 @@ export const funnelsRouter = {
 			})
 		)
 		.output(z.record(z.string(), z.unknown()))
-		.handler(async ({ context, input, errors }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
+		.use(withWebsiteRead)
+		.handler(async ({ context, input }) => {
 
 			const { startDate, endDate } =
 				input.startDate && input.endDate
@@ -433,15 +409,12 @@ export const funnelsRouter = {
 				.limit(1);
 
 			if (!funnel) {
-				throw errors.NOT_FOUND({
-					message: "Funnel not found",
-					data: { resourceType: "funnel", resourceId: input.funnelId },
-				});
+				throw rpcError.notFound("funnel", input.funnelId);
 			}
 
 			const steps = funnel.steps as Step[];
 			if (!steps?.length) {
-				throw errors.BAD_REQUEST({ message: "Funnel has no steps" });
+				throw rpcError.badRequest("Funnel has no steps");
 			}
 
 			const effectiveStartDate = getEffectiveStartDate(
@@ -488,8 +461,8 @@ export const funnelsRouter = {
 			})
 		)
 		.output(z.record(z.string(), z.unknown()))
-		.handler(async ({ context, input, errors }) => {
-			await authorizeWebsiteAccess(context, input.websiteId, "read");
+		.use(withWebsiteRead)
+		.handler(async ({ context, input }) => {
 
 			const { startDate, endDate } =
 				input.startDate && input.endDate
@@ -509,15 +482,12 @@ export const funnelsRouter = {
 				.limit(1);
 
 			if (!funnel) {
-				throw errors.NOT_FOUND({
-					message: "Funnel not found",
-					data: { resourceType: "funnel", resourceId: input.funnelId },
-				});
+				throw rpcError.notFound("funnel", input.funnelId);
 			}
 
 			const steps = funnel.steps as Step[];
 			if (!steps?.length) {
-				throw errors.BAD_REQUEST({ message: "Funnel has no steps" });
+				throw rpcError.badRequest("Funnel has no steps");
 			}
 
 			const effectiveStartDate = getEffectiveStartDate(

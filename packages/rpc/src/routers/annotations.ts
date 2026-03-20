@@ -1,53 +1,28 @@
-import { websitesApi } from "@databuddy/auth";
 import {
 	and,
 	annotations,
 	desc,
 	eq,
 	isNull,
-	member,
 	or,
 	type SQL,
 } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
-import { ORPCError } from "@orpc/server";
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
-import type { Context } from "../orpc";
+import { rpcError } from "../errors";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import { authorizeWebsiteAccess } from "../utils/auth";
+import {
+	isFullyAuthorized,
+	withWorkspace,
+} from "../procedures/with-workspace";
 import { getCacheAuthContext } from "../utils/cache-keys";
 
 const annotationsCache = createDrizzleCache({
 	redis,
 	namespace: "annotations",
 });
-const CACHE_TTL = 300; // 5 minutes
-
-/**
- * Check if the current identity has update permission for a website (workspace membership check).
- * Uses headers for auth (session or API key).
- */
-async function hasWebsiteUpdatePermission(
-	context: Context,
-	website: { organizationId: string | null }
-): Promise<boolean> {
-	if (!website.organizationId) {
-		return false;
-	}
-	try {
-		const { success } = await websitesApi.hasPermission({
-			headers: context.headers,
-			body: {
-				organizationId: website.organizationId,
-				permissions: { website: ["update"] },
-			},
-		});
-		return success;
-	} catch {
-		return false;
-	}
-}
+const CACHE_TTL = 300;
 
 const chartContextSchema = z.object({
 	dateRange: z.object({
@@ -117,16 +92,13 @@ export const annotationsRouter = {
 				ttl: CACHE_TTL,
 				tables: ["annotations"],
 				queryFn: async () => {
-					const website = await authorizeWebsiteAccess(
-						context,
-						input.websiteId,
-						"read"
-					);
+					const workspace = await withWorkspace(context, {
+						websiteId: input.websiteId,
+						permissions: ["read"],
+						allowPublicAccess: true,
+					});
+					const website = workspace.website;
 
-					// For public websites, filter annotations to only show:
-					// 1. Public annotations (isPublic: true)
-					// 2. Annotations created by the current user (if authenticated)
-					// For non-public websites, show all annotations (user has access via authorizeWebsiteAccess)
 					const baseConditions = [
 						eq(annotations.websiteId, input.websiteId),
 						eq(annotations.chartType, input.chartType),
@@ -134,7 +106,7 @@ export const annotationsRouter = {
 					];
 
 					let visibilityCondition: SQL<unknown> | undefined;
-					if (website.isPublic) {
+					if (workspace.isPublicAccess) {
 						if (context.user) {
 							// Show public annotations OR user's own annotations
 							visibilityCondition = or(
@@ -191,15 +163,13 @@ export const annotationsRouter = {
 				});
 			}
 
-			const website = await authorizeWebsiteAccess(
-				context,
-				annotationRow.websiteId,
-				"read"
-			);
+			const workspace = await withWorkspace(context, {
+				websiteId: annotationRow.websiteId,
+				permissions: ["read"],
+				allowPublicAccess: true,
+			});
 
-			// Apply same visibility rules as list: on public websites, private annotations
-			// are only visible to their creator (or API key holders who see all)
-			if (website.isPublic && !context.apiKey) {
+			if (workspace.isPublicAccess && !context.apiKey) {
 				const canSee =
 					context.user !== undefined &&
 					annotationRow.createdBy === context.user.id;
@@ -274,54 +244,13 @@ export const annotationsRouter = {
 			})
 		)
 		.output(annotationOutputSchema)
-		.handler(async ({ context, input, errors }) => {
-			const website = await authorizeWebsiteAccess(
-				context,
-				input.websiteId,
-				"update"
-			);
+		.handler(async ({ context, input }) => {
+			const workspace = await withWorkspace(context, {
+				websiteId: input.websiteId,
+				permissions: ["update"],
+			});
 
-			if (website.isPublic && context.user) {
-				const hasPermission = await hasWebsiteUpdatePermission(
-					context,
-					website
-				);
-				if (!hasPermission) {
-					throw errors.FORBIDDEN({
-						message:
-							"You cannot create annotations on public websites unless you own them",
-					});
-				}
-			}
-
-			let createdBy: string;
-			if (context.user) {
-				createdBy = context.user.id;
-			} else if (context.apiKey) {
-				if (!website.organizationId) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Website must belong to a workspace",
-					});
-				}
-				const orgId = context.apiKey.organizationId ?? website.organizationId;
-				const [ownerRow] = await context.db
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(eq(member.organizationId, orgId), eq(member.role, "owner"))
-					)
-					.limit(1);
-				if (!ownerRow) {
-					throw new ORPCError("FORBIDDEN", {
-						message: "Could not resolve organization owner for API key",
-					});
-				}
-				createdBy = ownerRow.userId;
-			} else {
-				throw new ORPCError("UNAUTHORIZED", {
-					message: "Authentication is required",
-				});
-			}
+			const createdBy = await workspace.getCreatedBy();
 
 			const annotationId = randomUUIDv7();
 			const [newAnnotation] = await context.db
@@ -367,7 +296,7 @@ export const annotationsRouter = {
 			})
 		)
 		.output(annotationOutputSchema)
-		.handler(async ({ context, input, errors }) => {
+		.handler(async ({ context, input }) => {
 			const existingAnnotation = await context.db
 				.select()
 				.from(annotations)
@@ -375,36 +304,26 @@ export const annotationsRouter = {
 				.limit(1);
 
 			if (existingAnnotation.length === 0) {
-				throw errors.NOT_FOUND({
-					message: "Annotation not found",
-					data: { resourceType: "annotation", resourceId: input.id },
-				});
+				throw rpcError.notFound("annotation", input.id);
 			}
 
 			const annotation = existingAnnotation[0];
 
-			// Users can only update their own annotations, unless they own the website.
-			// API keys have org access so they are treated as having permission.
-			const website = await authorizeWebsiteAccess(
-				context,
-				annotation.websiteId,
-				"read"
-			);
+			await withWorkspace(context, {
+				websiteId: annotation.websiteId,
+				permissions: ["read"],
+			});
 
-			const hasPermission = context.apiKey
-				? true
-				: context.user
-					? await hasWebsiteUpdatePermission(context, website)
-					: false;
+			const isOwner =
+				context.apiKey ||
+				(await isFullyAuthorized(context, annotation.websiteId));
 
 			if (
-				!hasPermission &&
+				!isOwner &&
 				context.user &&
 				annotation.createdBy !== context.user.id
 			) {
-				throw errors.FORBIDDEN({
-					message: "You can only update your own annotations",
-				});
+				throw rpcError.forbidden("You can only update your own annotations");
 			}
 
 			const updateData: {
@@ -449,8 +368,7 @@ export const annotationsRouter = {
 		})
 		.input(z.object({ id: z.string() }))
 		.output(successOutputSchema)
-		.handler(async ({ context, input, errors }) => {
-			// First verify the annotation exists and get website ID
+		.handler(async ({ context, input }) => {
 			const existingAnnotation = await context.db
 				.select()
 				.from(annotations)
@@ -458,36 +376,26 @@ export const annotationsRouter = {
 				.limit(1);
 
 			if (existingAnnotation.length === 0) {
-				throw errors.NOT_FOUND({
-					message: "Annotation not found",
-					data: { resourceType: "annotation", resourceId: input.id },
-				});
+				throw rpcError.notFound("annotation", input.id);
 			}
 
 			const annotation = existingAnnotation[0];
 
-			// Users can only delete their own annotations, unless they own the website.
-			// API keys have org access so they are treated as having permission.
-			const website = await authorizeWebsiteAccess(
-				context,
-				annotation.websiteId,
-				"read"
-			);
+			await withWorkspace(context, {
+				websiteId: annotation.websiteId,
+				permissions: ["read"],
+			});
 
-			const hasPermission = context.apiKey
-				? true
-				: context.user
-					? await hasWebsiteUpdatePermission(context, website)
-					: false;
+			const canDeleteAny =
+				context.apiKey ||
+				(await isFullyAuthorized(context, annotation.websiteId));
 
 			if (
-				!hasPermission &&
+				!canDeleteAny &&
 				context.user &&
 				annotation.createdBy !== context.user.id
 			) {
-				throw errors.FORBIDDEN({
-					message: "You can only delete your own annotations",
-				});
+				throw rpcError.forbidden("You can only delete your own annotations");
 			}
 
 			await context.db

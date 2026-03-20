@@ -7,7 +7,7 @@ import { API_SCOPES } from "@databuddy/api-keys/scopes";
 import { websitesApi } from "@databuddy/auth";
 import { apikey, desc, eq } from "@databuddy/db";
 import { invalidateCacheableKey } from "@databuddy/redis";
-import { ORPCError } from "@orpc/server";
+import { rpcError } from "../errors";
 import {
 	ApiKeyErrorCode,
 	hasAllScopes,
@@ -112,31 +112,21 @@ async function verifyOrganizationAccess(
 		});
 
 		if (!success) {
-			throw new ORPCError("FORBIDDEN", {
-				message: "Missing organization permissions",
-			});
+			throw rpcError.forbidden("Missing organization permissions");
 		}
 	} catch (error) {
-		// If it's already an ORPCError, re-throw it
-		if (error instanceof ORPCError) {
-			throw error;
-		}
-		// Otherwise, treat permission check failures as FORBIDDEN
-		throw new ORPCError("FORBIDDEN", {
-			message: "Missing organization permissions",
-		});
+		if (error instanceof Error && "code" in error) throw error;
+		throw rpcError.forbidden("Missing organization permissions");
 	}
 }
 
 async function getKeyWithAuth(ctx: Context, id: string) {
 	const key = await ctx.db.query.apikey.findFirst({ where: eq(apikey.id, id) });
 	if (!key) {
-		throw new ORPCError("NOT_FOUND", { message: "API key not found" });
+		throw rpcError.notFound("API key", id);
 	}
 	if (!key.organizationId) {
-		throw new ORPCError("NOT_FOUND", {
-			message: "API key not found",
-		});
+		throw rpcError.notFound("API key", id);
 	}
 	await verifyOrganizationAccess(ctx, key.organizationId);
 	return key;
@@ -380,9 +370,7 @@ export const apikeysRouter = {
 
 			const ownerId = key.organizationId;
 			if (!ownerId) {
-				throw new ORPCError("INTERNAL_SERVER_ERROR", {
-					message: "Organization key required for rotate",
-				});
+				throw rpcError.internal("Organization key required for rotate");
 			}
 			const { key: secret, record } = await keys.create({
 				ownerId,
