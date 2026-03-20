@@ -75,7 +75,7 @@ export const CustomEventsBuilders: Record<string, SimpleQueryConfig> = {
 						AND event_name != ''
 						${combinedWhereClause}
 					GROUP BY event_name
-					ORDER BY total_events DESC
+					ORDER BY unique_users DESC, total_events DESC
 					LIMIT {limit:UInt32}
 				`,
 				params: {

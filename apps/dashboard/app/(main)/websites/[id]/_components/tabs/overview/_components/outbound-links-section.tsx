@@ -6,7 +6,7 @@ import {
 	DataTable,
 	type TabConfig,
 } from "@/components/table/data-table";
-import { PercentageBadge } from "@/app/(main)/websites/[id]/_components/utils/technology-helpers";
+import { PercentageBadge } from "@/components/ui/percentage-badge";
 import type {
 	OutboundDomainRow,
 	OutboundLinkRow,
@@ -98,21 +98,15 @@ const outboundLinksColumns: ColumnDef<OutboundLinkRow, unknown>[] = [
 		id: "total_clicks",
 		accessorKey: "total_clicks",
 		header: "Clicks",
-		cell: ({ getValue }: CellContext<OutboundLinkRow, unknown>) => {
-			const v = getValue();
-			const n = typeof v === "number" ? v : 0;
-			return createMetricDisplay(n, "total");
-		},
+		cell: ({ getValue }: CellContext<OutboundLinkRow, unknown>) =>
+			createMetricDisplay(parseMetricNumber(getValue()), "total"),
 	},
 	{
 		id: "unique_users",
 		accessorKey: "unique_users",
 		header: "Users",
-		cell: ({ getValue }: CellContext<OutboundLinkRow, unknown>) => {
-			const v = getValue();
-			const n = typeof v === "number" ? v : 0;
-			return createMetricDisplay(n, "unique");
-		},
+		cell: ({ getValue }: CellContext<OutboundLinkRow, unknown>) =>
+			createMetricDisplay(parseMetricNumber(getValue()), "unique"),
 	},
 	{
 		id: "percentage",
@@ -144,31 +138,22 @@ const outboundDomainsColumns: ColumnDef<OutboundDomainRow, unknown>[] = [
 		id: "total_clicks",
 		accessorKey: "total_clicks",
 		header: "Clicks",
-		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) => {
-			const v = getValue();
-			const n = typeof v === "number" ? v : 0;
-			return createMetricDisplay(n, "total");
-		},
+		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) =>
+			createMetricDisplay(parseMetricNumber(getValue()), "total"),
 	},
 	{
 		id: "unique_users",
 		accessorKey: "unique_users",
 		header: "Users",
-		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) => {
-			const v = getValue();
-			const n = typeof v === "number" ? v : 0;
-			return createMetricDisplay(n, "unique");
-		},
+		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) =>
+			createMetricDisplay(parseMetricNumber(getValue()), "unique"),
 	},
 	{
 		id: "unique_links",
 		accessorKey: "unique_links",
 		header: "Links",
-		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) => {
-			const v = getValue();
-			const n = typeof v === "number" ? v : 0;
-			return createMetricDisplay(n, "unique");
-		},
+		cell: ({ getValue }: CellContext<OutboundDomainRow, unknown>) =>
+			createMetricDisplay(parseMetricNumber(getValue()), "unique"),
 	},
 	{
 		id: "percentage",
@@ -277,6 +262,7 @@ export function OutboundLinksSection({
 			isLoading={isLoading}
 			minHeight="350px"
 			onAddFilter={onAddFilterAction}
+			shareColumnTooltip="Share of outbound link clicks in this list."
 			tabs={eventsAndLinksTabs}
 			title="Events & Links"
 		/>

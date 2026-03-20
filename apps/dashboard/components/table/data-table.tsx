@@ -47,6 +47,8 @@ interface DataTableProps<TData extends { name: string | number }, TValue> {
 		index: number
 	) => React.ReactNode;
 	expandable?: boolean;
+	/** Native title on Share column; omit for default visitor-share explanation; pass "" to hide. */
+	shareColumnTooltip?: string;
 }
 
 const EnhancedSkeleton = ({ minHeight }: { minHeight: string | number }) => (
@@ -96,6 +98,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 	expandable = false,
 	onAddFilter,
 	onRowAction,
+	shareColumnTooltip,
 }: DataTableProps<TData, TValue>) {
 	const [activeTab, setActiveTab] = useState(tabs?.[0]?.id || "");
 
@@ -189,6 +192,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 						onRowAction={onRowAction}
 						onRowClick={onRowClick}
 						renderSubRow={renderSubRow}
+						shareColumnTooltip={shareColumnTooltip}
 						table={table}
 						tabs={tabs}
 						title={title}
@@ -225,6 +229,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 								onRowClick={onRowClick}
 								onTabChange={handleTabChange}
 								renderSubRow={renderSubRow}
+								shareColumnTooltip={shareColumnTooltip}
 								tabs={tabs}
 								title={title}
 							/>

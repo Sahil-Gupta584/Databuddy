@@ -17,6 +17,22 @@ import {
 import { cn } from "@/lib/utils";
 import { TableEmptyState } from "./table-empty-state";
 
+const DEFAULT_SHARE_COLUMN_TITLE =
+	"Share of unique visitors in this breakdown. Row percentages may add up to more than 100% when the same user appears in multiple rows.";
+
+function resolveShareColumnTitle(
+	columnId: string,
+	shareColumnTooltip: string | undefined
+): string | undefined {
+	if (columnId !== "percentage") {
+		return undefined;
+	}
+	if (shareColumnTooltip !== undefined) {
+		return shareColumnTooltip.length > 0 ? shareColumnTooltip : undefined;
+	}
+	return DEFAULT_SHARE_COLUMN_TITLE;
+}
+
 const PERCENTAGE_THRESHOLDS = {
 	HIGH: 50,
 	MEDIUM: 25,
@@ -177,6 +193,8 @@ interface TableContentProps<TData extends { name: string | number }> {
 	activeTab?: string;
 	emptyMessage?: string;
 	className?: string;
+	/** Native tooltip on Share (column id "percentage"). Omit for default visitor-share copy; pass "" to disable. */
+	shareColumnTooltip?: string;
 }
 
 function TableContentInner<TData extends { name: string | number }>({
@@ -193,6 +211,7 @@ function TableContentInner<TData extends { name: string | number }>({
 	activeTab,
 	emptyMessage = "No data available",
 	className,
+	shareColumnTooltip,
 }: TableContentProps<TData>) {
 	const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
@@ -259,6 +278,10 @@ function TableContentInner<TData extends { name: string | number }>({
 										(header.column.columnDef.meta as any)?.className
 									)}
 									key={header.id}
+									title={resolveShareColumnTitle(
+										header.column.id,
+										shareColumnTooltip
+									)}
 									style={{
 										width:
 											header.getSize() !== 150

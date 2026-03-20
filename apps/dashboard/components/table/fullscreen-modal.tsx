@@ -34,6 +34,7 @@ interface FullScreenModalProps<TData extends { name: string | number }> {
 	onAddFilter?: (field: string, value: string, tableTitle?: string) => void;
 	onRowAction?: (row: TData) => void;
 	onRowClick?: (field: string, value: string | number) => void;
+	shareColumnTooltip?: string;
 }
 
 export function FullScreenModal<TData extends { name: string | number }>({
@@ -51,6 +52,7 @@ export function FullScreenModal<TData extends { name: string | number }>({
 	onAddFilter,
 	onRowAction,
 	onRowClick,
+	shareColumnTooltip,
 }: FullScreenModalProps<TData>) {
 	const currentTabData = tabs?.find((tab) => tab.id === activeTab);
 	const tableData = currentTabData?.data || data || [];
@@ -119,6 +121,7 @@ export function FullScreenModal<TData extends { name: string | number }>({
 					onRowAction={onRowAction}
 					onRowClick={onRowClick}
 					renderSubRow={renderSubRow}
+					shareColumnTooltip={shareColumnTooltip}
 					table={table}
 					tabs={tabs}
 					title={title}
