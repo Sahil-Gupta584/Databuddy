@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Bento from "@/components/bento";
 import { Footer } from "@/components/footer";
 import { Description } from "@/components/landing/description";
@@ -8,17 +9,35 @@ import Section from "@/components/landing/section";
 import Testimonials from "@/components/landing/testimonials";
 import { TrustedBy } from "@/components/landing/trusted-by";
 import { StructuredData } from "@/components/structured-data";
+import { homeFaqItems, homePageSeo } from "@/lib/home-seo";
+
+export const metadata: Metadata = {
+	title: homePageSeo.title,
+	description: homePageSeo.description,
+	alternates: {
+		canonical: homePageSeo.url,
+	},
+	openGraph: {
+		title: homePageSeo.title,
+		description: homePageSeo.description,
+		url: homePageSeo.url,
+	},
+};
 
 export default function HomePage() {
 	return (
 		<>
 			<StructuredData
+				elements={[
+					{
+						type: "faq",
+						items: homeFaqItems,
+					},
+				]}
 				page={{
-					title:
-						"Simple Analytics Platform - Fast Setup, No Complexity | Databuddy",
-					description:
-						"Analytics tool that stays simple forever. Track usage, errors, and experiments in one layer. Setup in 5 minutes. Open source alternative to Google Analytics that won't become complex over time. Privacy-first, GDPR compliant.",
-					url: "https://www.databuddy.cc",
+					title: homePageSeo.title,
+					description: homePageSeo.description,
+					url: homePageSeo.url,
 				}}
 			/>
 			<div className="overflow-hidden">

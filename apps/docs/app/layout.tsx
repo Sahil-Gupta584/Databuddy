@@ -35,10 +35,13 @@ const ltSuperiorMono = localFont({
 });
 
 export const metadata: Metadata = {
-	title:
-		"Privacy-first web analytics (Google Analytics alternative) — under 30 KB, GDPR-compliant | Databuddy",
+	title: {
+		template: "%s | Databuddy",
+		default:
+			"Databuddy — Privacy-first analytics, error tracking & feature flags",
+	},
 	description:
-		"Experience powerful, privacy-first analytics that matches Google Analytics feature-for-feature without compromising user data. Zero cookies required, 100% data ownership, and AI-powered insights to help your business grow while staying compliant.",
+		"One lightweight layer for analytics, error tracking, and feature flags. Under 30 KB, no cookies, GDPR compliant by default. Open-source Google Analytics alternative.",
 	authors: [{ name: "Databuddy Team" }],
 	creator: "Databuddy",
 	publisher: "Databuddy",
@@ -46,19 +49,11 @@ export const metadata: Metadata = {
 	openGraph: {
 		type: "website",
 		locale: "en_US",
-		url: SITE_URL,
-		title:
-			"Privacy-first web analytics (Google Analytics alternative) — under 30 KB, GDPR-compliant | Databuddy",
-		description:
-			"Experience powerful, privacy-first analytics that matches Google Analytics feature-for-feature without compromising user data. Zero cookies required, 100% data ownership, and AI-powered insights to help your business grow while staying compliant.",
 		siteName: "Databuddy",
+		images: ["/og-image.png"],
 	},
 	twitter: {
 		card: "summary_large_image",
-		title:
-			"Privacy-first web analytics (Google Analytics alternative) — under 30 KB, GDPR-compliant | Databuddy",
-		description:
-			"Experience powerful, privacy-first analytics that matches Google Analytics feature-for-feature without compromising user data. Zero cookies required, 100% data ownership, and AI-powered insights to help your business grow while staying compliant.",
 		images: ["/og-image.png"],
 		creator: "@databuddyps",
 		site: "@databuddyps",
@@ -73,9 +68,6 @@ export const metadata: Metadata = {
 			"max-image-preview": "large",
 			"max-snippet": -1,
 		},
-	},
-	alternates: {
-		canonical: SITE_URL,
 	},
 	appleWebApp: {
 		title: "Databuddy",
