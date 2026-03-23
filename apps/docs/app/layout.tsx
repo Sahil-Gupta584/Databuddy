@@ -2,7 +2,7 @@ import "./global.css";
 import { Databuddy } from "@databuddy/sdk/react";
 import { RootProvider } from "fumadocs-ui/provider";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import Script from "next/script";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -10,22 +10,28 @@ import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { SITE_URL } from "./util/constants";
 
-const geist = Geist({
-	subsets: ["latin"],
-	weight: ["400", "500", "600", "700"],
-	variable: "--font-geist",
+const ltSuperior = localFont({
+	src: [
+		{ path: "../fonts/lt-superior/light.otf", weight: "300" },
+		{ path: "../fonts/lt-superior/regular.otf", weight: "400" },
+		{ path: "../fonts/lt-superior/medium.otf", weight: "500" },
+		{ path: "../fonts/lt-superior/semibold.otf", weight: "600" },
+		{ path: "../fonts/lt-superior/bold.otf", weight: "700" },
+		{ path: "../fonts/lt-superior/extrabold.otf", weight: "800" },
+	],
+	variable: "--font-lt-superior",
+	display: "swap",
 });
 
-const geistMono = Geist_Mono({
-	subsets: ["latin"],
-	weight: ["400", "500", "600", "700"],
-	variable: "--font-geist-mono",
-});
-
-const manrope = Manrope({
-	subsets: ["latin"],
-	weight: ["400", "500", "600", "700"],
-	variable: "--font-manrope",
+const ltSuperiorMono = localFont({
+	src: [
+		{ path: "../fonts/lt-superior-mono/regular.otf", weight: "400" },
+		{ path: "../fonts/lt-superior-mono/medium.otf", weight: "500" },
+		{ path: "../fonts/lt-superior-mono/semibold.otf", weight: "600" },
+		{ path: "../fonts/lt-superior-mono/bold.otf", weight: "700" },
+	],
+	variable: "--font-lt-superior-mono",
+	display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -89,7 +95,7 @@ export const viewport: Viewport = {
 export default function Layout({ children }: { children: ReactNode }) {
 	return (
 		<html
-			className={`${manrope.variable} ${geist.className} ${geistMono.variable} `}
+			className={`${ltSuperior.className} ${ltSuperior.variable} ${ltSuperiorMono.variable}`}
 			lang="en"
 			suppressHydrationWarning
 		>

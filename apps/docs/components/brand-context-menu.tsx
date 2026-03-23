@@ -3,71 +3,19 @@
 import {
 	CheckIcon,
 	CopyIcon,
-	DownloadSimpleIcon,
-	FileIcon,
 	ImageIcon,
+	PaletteIcon,
 } from "@phosphor-icons/react";
+import Link from "next/link";
 import { type ReactNode, useCallback, useState } from "react";
 import { toast } from "sonner";
 import {
 	ContextMenu,
 	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { cn } from "@/lib/utils";
-
-interface BrandAsset {
-	label: string;
-	darkPath: string;
-	lightPath: string;
-}
-
-const BRAND_ASSETS: BrandAsset[] = [
-	{
-		label: "Logo",
-		darkPath: "/brand/logomark/white.svg",
-		lightPath: "/brand/logomark/black.svg",
-	},
-	{
-		label: "Wordmark",
-		darkPath: "/brand/wordmark/white.svg",
-		lightPath: "/brand/wordmark/black.svg",
-	},
-	{
-		label: "Primary",
-		darkPath: "/brand/primary-logo/white.svg",
-		lightPath: "/brand/primary-logo/black.svg",
-	},
-	{
-		label: "Stacked",
-		darkPath: "/brand/secondary-logo/white.svg",
-		lightPath: "/brand/secondary-logo/black.svg",
-	},
-];
-
-type CardVariant = "dark" | "light";
-
-interface FlatAsset {
-	label: string;
-	path: string;
-	variant: CardVariant;
-	filename: string;
-}
-
-const FLAT_ASSETS: FlatAsset[] = BRAND_ASSETS.flatMap((asset) => [
-	{
-		label: asset.label,
-		path: asset.lightPath,
-		variant: "light" as const,
-		filename: `${asset.label.toLowerCase()}-light`,
-	},
-	{
-		label: asset.label,
-		path: asset.darkPath,
-		variant: "dark" as const,
-		filename: `${asset.label.toLowerCase()}-dark`,
-	},
-]);
 
 async function fetchSvgText(path: string): Promise<string> {
 	const response = await fetch(path);
@@ -77,7 +25,7 @@ async function fetchSvgText(path: string): Promise<string> {
 async function copySvgAction(path: string, label: string) {
 	const svg = await fetchSvgText(path);
 	await navigator.clipboard.writeText(svg);
-	toast.success(`${label} SVG copied`);
+	toast.success(`${label} copied as SVG`);
 }
 
 async function copyPngAction(path: string, label: string) {
@@ -107,7 +55,7 @@ async function copyPngAction(path: string, label: string) {
 					await navigator.clipboard.write([
 						new ClipboardItem({ "image/png": pngBlob }),
 					]);
-					toast.success(`${label} PNG copied`);
+					toast.success(`${label} copied as PNG`);
 					resolve();
 				} catch (e) {
 					reject(e);
@@ -122,122 +70,52 @@ async function copyPngAction(path: string, label: string) {
 	});
 }
 
-function downloadAction(path: string, filename: string) {
-	const a = document.createElement("a");
-	a.href = path;
-	a.download = `databuddy-${filename}.svg`;
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
-}
-
-interface ActionButtonProps {
-	ariaLabel: string;
-	children: ReactNode;
-	variant: CardVariant;
-	onClickAction: () => Promise<void> | void;
-}
-
-function ActionButton({
-	ariaLabel,
-	children,
-	variant,
-	onClickAction,
-}: ActionButtonProps) {
+function useFlashAction(action: () => Promise<void>) {
 	const [flash, setFlash] = useState(false);
 
-	const handleClick = useCallback(
-		async (e: React.MouseEvent) => {
-			e.stopPropagation();
-			try {
-				await onClickAction();
-				setFlash(true);
-				setTimeout(() => setFlash(false), 1200);
-			} catch {
-				toast.error("Action failed");
-			}
-		},
-		[onClickAction]
-	);
+	const run = useCallback(async () => {
+		try {
+			await action();
+			setFlash(true);
+			setTimeout(() => setFlash(false), 1200);
+		} catch {
+			toast.error("Action failed");
+		}
+	}, [action]);
+
+	return { flash, run };
+}
+
+function CopyMenuItem({
+	label,
+	icon,
+	onAction,
+}: {
+	label: string;
+	icon: ReactNode;
+	onAction: () => Promise<void>;
+}) {
+	const { flash, run } = useFlashAction(onAction);
 
 	return (
-		<button
-			aria-label={ariaLabel}
-			className={cn(
-				"flex size-7 cursor-pointer items-center justify-center rounded transition-all active:scale-90",
-				flash
-					? "bg-emerald-500/40 text-emerald-300"
-					: variant === "dark"
-						? "bg-white/90 text-neutral-900 hover:bg-white"
-						: "bg-neutral-900/80 text-white hover:bg-neutral-900"
+		<ContextMenuItem onClick={run}>
+			{flash ? (
+				<CheckIcon className="size-4 text-emerald-500" weight="bold" />
+			) : (
+				icon
 			)}
-			onClick={handleClick}
-			type="button"
-		>
-			{flash ? <CheckIcon className="size-3.5" weight="bold" /> : children}
-		</button>
+			{label}
+		</ContextMenuItem>
 	);
 }
 
-interface AssetCardProps {
-	item: FlatAsset;
-}
-
-function AssetCard({ item }: AssetCardProps) {
-	return (
-		<div className="group/card flex flex-col gap-1">
-			<div
-				className={cn(
-					"relative flex aspect-3/2 items-center justify-center overflow-hidden rounded border p-3",
-					item.variant === "dark"
-						? "border-white/10 bg-neutral-950"
-						: "border-black/8 bg-neutral-50"
-				)}
-			>
-				<img
-					alt={`${item.label} — ${item.variant}`}
-					className="max-h-full max-w-full object-contain"
-					height={64}
-					src={item.path}
-					width={128}
-				/>
-				<div
-					className={cn(
-						"absolute inset-0 flex items-end justify-center gap-1 p-1.5 opacity-0 transition-opacity group-hover/card:opacity-100",
-						item.variant === "dark" ? "bg-black/50" : "bg-white/60"
-					)}
-				>
-					<ActionButton
-						ariaLabel={`Copy ${item.label} SVG`}
-						onClickAction={() => copySvgAction(item.path, item.label)}
-						variant={item.variant}
-					>
-						<CopyIcon className="size-3.5" />
-					</ActionButton>
-					<ActionButton
-						ariaLabel={`Copy ${item.label} PNG`}
-						onClickAction={() => copyPngAction(item.path, item.label)}
-						variant={item.variant}
-					>
-						<ImageIcon className="size-3.5" />
-					</ActionButton>
-					<ActionButton
-						ariaLabel={`Download ${item.label} SVG`}
-						onClickAction={() => downloadAction(item.path, item.filename)}
-						variant={item.variant}
-					>
-						<DownloadSimpleIcon className="size-3.5" />
-					</ActionButton>
-				</div>
-			</div>
-			<div className="flex items-center justify-between px-0.5">
-				<span className="text-popover-foreground text-xs">{item.label}</span>
-				<span className="text-[10px] text-muted-foreground">
-					{item.variant === "dark" ? "Dark" : "Light"}
-				</span>
-			</div>
-		</div>
-	);
+function getThemeAwarePath(lightPath: string, darkPath: string): string {
+	if (typeof document === "undefined") {
+		return lightPath;
+	}
+	return document.documentElement.classList.contains("dark")
+		? darkPath
+		: lightPath;
 }
 
 interface BrandContextMenuProps {
@@ -248,24 +126,67 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-			<ContextMenuContent className="w-[520px] p-3">
-				<div className="mb-2.5 flex items-center gap-2">
-					<FileIcon
-						className="size-3.5 text-muted-foreground"
-						weight="duotone"
-					/>
-					<span className="font-medium text-popover-foreground text-xs">
-						Brand Assets
-					</span>
-					<span className="text-[10px] text-muted-foreground">
-						Hover for actions
-					</span>
-				</div>
-				<div className="grid grid-cols-3 gap-2">
-					{FLAT_ASSETS.map((item) => (
-						<AssetCard item={item} key={`${item.label}-${item.variant}`} />
-					))}
-				</div>
+			<ContextMenuContent className="w-48">
+				<CopyMenuItem
+					icon={<CopyIcon className="size-4" />}
+					label="Copy logo SVG"
+					onAction={() =>
+						copySvgAction(
+							getThemeAwarePath(
+								"/brand/logomark/black.svg",
+								"/brand/logomark/white.svg"
+							),
+							"Logo"
+						)
+					}
+				/>
+				<CopyMenuItem
+					icon={<ImageIcon className="size-4" />}
+					label="Copy logo PNG"
+					onAction={() =>
+						copyPngAction(
+							getThemeAwarePath(
+								"/brand/logomark/black.svg",
+								"/brand/logomark/white.svg"
+							),
+							"Logo"
+						)
+					}
+				/>
+				<ContextMenuSeparator />
+				<CopyMenuItem
+					icon={<CopyIcon className="size-4" />}
+					label="Copy wordmark SVG"
+					onAction={() =>
+						copySvgAction(
+							getThemeAwarePath(
+								"/brand/wordmark/black.svg",
+								"/brand/wordmark/white.svg"
+							),
+							"Wordmark"
+						)
+					}
+				/>
+				<CopyMenuItem
+					icon={<ImageIcon className="size-4" />}
+					label="Copy wordmark PNG"
+					onAction={() =>
+						copyPngAction(
+							getThemeAwarePath(
+								"/brand/wordmark/black.svg",
+								"/brand/wordmark/white.svg"
+							),
+							"Wordmark"
+						)
+					}
+				/>
+				<ContextMenuSeparator />
+				<ContextMenuItem asChild>
+					<Link href="/branding">
+						<PaletteIcon className="size-4" weight="duotone" />
+						Brand guidelines
+					</Link>
+				</ContextMenuItem>
 			</ContextMenuContent>
 		</ContextMenu>
 	);
