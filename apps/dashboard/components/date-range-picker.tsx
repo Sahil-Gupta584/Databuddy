@@ -229,7 +229,7 @@ export function DateRangePicker({
 												className={cn(
 													"flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm",
 													isActive
-														? "bg-primary text-primary-foreground"
+														? "bg-brand-purple text-white"
 														: "text-muted-foreground hover:bg-secondary hover:text-foreground"
 												)}
 												key={preset.label}
@@ -290,7 +290,7 @@ export function DateRangePicker({
 									)}
 								</div>
 								{daysDiff > 0 && (
-									<span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary text-xs tabular-nums">
+									<span className="rounded-full bg-brand-purple/15 px-2 py-0.5 font-semibold text-brand-purple text-xs tabular-nums">
 										{daysDiff} day{daysDiff === 1 ? "" : "s"}
 									</span>
 								)}
@@ -305,7 +305,7 @@ export function DateRangePicker({
 											className={cn(
 												"shrink-0 rounded px-2.5 py-1.5 font-medium text-xs",
 												isActive
-													? "bg-primary text-primary-foreground"
+													? "bg-brand-purple text-white"
 													: "bg-secondary text-muted-foreground"
 											)}
 											key={preset.label}

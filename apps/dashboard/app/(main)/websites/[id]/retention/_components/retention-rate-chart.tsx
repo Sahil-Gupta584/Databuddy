@@ -58,7 +58,7 @@ function CustomTooltip({
 			<div className="space-y-1.5">
 				<div className="flex items-center justify-between gap-4">
 					<div className="flex items-center gap-2">
-						<div className="size-2 rounded-full bg-primary" />
+						<div className="size-2 rounded-full bg-chart-1" />
 						<span className="text-muted-foreground text-xs">Retention</span>
 					</div>
 					<span className="font-semibold text-foreground text-xs tabular-nums">
@@ -141,7 +141,7 @@ export function RetentionRateChart({
 			{/* Legend */}
 			<div className="flex items-center gap-4">
 				<div className="flex items-center gap-2">
-					<div className="size-2.5 rounded-full bg-primary" />
+					<div className="size-2.5 rounded-full bg-chart-1" />
 					<span className="text-muted-foreground text-xs">
 						Daily Retention Rate
 					</span>

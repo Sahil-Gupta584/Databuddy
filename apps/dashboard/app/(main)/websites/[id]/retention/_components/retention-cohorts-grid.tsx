@@ -36,18 +36,18 @@ const getRetentionColor = (percentage: number | null): RetentionColor => {
 	const normalizedPct = Math.min(percentage, 100) / 100;
 
 	if (normalizedPct >= 0.7) {
-		return { className: "bg-primary text-primary-foreground" };
+		return { className: "bg-chart-1 text-white" };
 	}
 	if (normalizedPct >= 0.5) {
-		return { className: "bg-primary/70 text-primary-foreground" };
+		return { className: "bg-chart-1/70 text-white" };
 	}
 	if (normalizedPct >= 0.3) {
-		return { className: "bg-primary/40 text-foreground" };
+		return { className: "bg-chart-1/40 text-foreground" };
 	}
 	if (normalizedPct >= 0.1) {
-		return { className: "bg-primary/20 text-foreground" };
+		return { className: "bg-chart-1/20 text-foreground" };
 	}
-	return { className: "bg-primary/10 text-foreground" };
+	return { className: "bg-chart-1/10 text-foreground" };
 };
 
 const formatCohortDate = (dateStr: string): string => {
