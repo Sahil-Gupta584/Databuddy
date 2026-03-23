@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Bento from "@/components/bento";
 import { Footer } from "@/components/footer";
 import { Description } from "@/components/landing/description";
@@ -9,6 +10,7 @@ import Section from "@/components/landing/section";
 import Testimonials from "@/components/landing/testimonials";
 import { TrustedBy } from "@/components/landing/trusted-by";
 import { StructuredData } from "@/components/structured-data";
+import { getDemoEmbedBaseUrl, hostFromNextHeaders } from "@/lib/demo-embed-url";
 import { homeFaqItems, homePageSeo } from "@/lib/home-seo";
 
 export const metadata: Metadata = {
@@ -24,7 +26,10 @@ export const metadata: Metadata = {
 	},
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+	const headerList = await headers();
+	const demoEmbedBaseUrl = getDemoEmbedBaseUrl(hostFromNextHeaders(headerList));
+
 	return (
 		<>
 			<StructuredData
@@ -42,7 +47,7 @@ export default function HomePage() {
 			/>
 			<div className="overflow-hidden">
 				<Section className="overflow-hidden" customPaddings id="hero">
-					<Hero />
+					<Hero demoEmbedBaseUrl={demoEmbedBaseUrl} />
 				</Section>
 
 				<Section
