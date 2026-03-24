@@ -79,11 +79,6 @@ interface Filter {
 	operator: string;
 	value: string | readonly string[];
 }
-interface VisitorStep {
-	step: number;
-	time: number;
-	referrer?: string;
-}
 interface ParsedReferrer {
 	name: string;
 	type: string;
@@ -337,54 +332,6 @@ const buildStepQuery = (
 		GROUP BY e.vid${includeReferrer ? ", r.vref" : ""}`;
 };
 
-// Process raw results into visitor -> steps map
-const groupByVisitor = (
-	rows: Array<{ step: number; vid: string; ts: number; ref?: string }>
-): Map<string, VisitorStep[]> => {
-	const map = new Map<string, VisitorStep[]>();
-	for (const r of rows) {
-		const existing = map.get(r.vid);
-		const arr = existing ?? [];
-		if (!existing) {
-			map.set(r.vid, arr);
-		}
-		arr.push({ step: r.step, time: r.ts, referrer: r.ref || undefined });
-	}
-	for (const steps of map.values()) {
-		steps.sort((a, b) => a.time - b.time);
-	}
-	return map;
-};
-
-// Count visitors who completed each step in order
-const countStepCompletions = (
-	visitors: Map<string, VisitorStep[]>,
-	filter?: Set<string>
-): Map<number, Set<string>> => {
-	const counts = new Map<number, Set<string>>();
-
-	for (const [vid, steps] of visitors) {
-		if (filter && !filter.has(vid)) {
-			continue;
-		}
-
-		let expected = 1;
-
-		for (const s of steps) {
-			if (s.step === expected) {
-				let set = counts.get(expected);
-				if (!set) {
-					set = new Set();
-					counts.set(expected, set);
-				}
-				set.add(vid);
-				expected += 1;
-			}
-		}
-	}
-	return counts;
-};
-
 interface ErrorRow {
 	path: string;
 	vid: string;
@@ -393,72 +340,99 @@ interface ErrorRow {
 	error_count: number;
 }
 
+const buildStepSubquery = (
+	step: AnalyticsStep,
+	paramKey: string,
+	params: ClickhouseQueryParams
+): string => {
+	params[paramKey] = step.target;
+	if (step.type === "PAGE_VIEW") {
+		return `SELECT DISTINCT anonymous_id FROM analytics.events
+			WHERE client_id = {websiteId:String}
+			AND time >= parseDateTimeBestEffort({startDate:String})
+			AND time <= parseDateTimeBestEffort({endDate:String})
+			AND event_name = 'screen_view'
+			AND path = {${paramKey}:String}`;
+	}
+	return `(SELECT DISTINCT anonymous_id FROM analytics.events
+		WHERE client_id = {websiteId:String}
+		AND time >= parseDateTimeBestEffort({startDate:String})
+		AND time <= parseDateTimeBestEffort({endDate:String})
+		AND event_name = {${paramKey}:String}
+		UNION ALL
+		SELECT DISTINCT COALESCE(anonymous_id, session_id, '') FROM analytics.custom_events
+		WHERE (owner_id = {websiteId:String} OR website_id = {websiteId:String})
+		AND timestamp >= parseDateTimeBestEffort({startDate:String})
+		AND timestamp <= parseDateTimeBestEffort({endDate:String})
+		AND event_name = {${paramKey}:String}
+		AND COALESCE(anonymous_id, session_id, '') != '')`;
+};
+
 const queryFunnelErrors = async (
 	steps: AnalyticsStep[],
-	funnelVids: Set<string>,
+	hasVisitors: boolean,
 	params: ClickhouseQueryParams
 ): Promise<{
 	errorsByPath: Map<string, ErrorRow[]>;
 	sessionsWithErrors: Set<string>;
 	totalErrors: number;
+	dropoffsWithErrors: number;
 }> => {
-	if (funnelVids.size === 0) {
-		return {
-			errorsByPath: new Map(),
-			sessionsWithErrors: new Set(),
-			totalErrors: 0,
-		};
-	}
+	const empty = {
+		errorsByPath: new Map<string, ErrorRow[]>(),
+		sessionsWithErrors: new Set<string>(),
+		totalErrors: 0,
+		dropoffsWithErrors: 0,
+	};
 
 	const firstStep = steps[0];
-	if (!firstStep) {
-		return {
-			errorsByPath: new Map(),
-			sessionsWithErrors: new Set(),
-			totalErrors: 0,
-		};
+	if (!(hasVisitors && firstStep)) {
+		return empty;
 	}
 
-	params.firstStepTarget = firstStep.target;
-
-	const subquery =
-		firstStep.type === "PAGE_VIEW"
-			? `SELECT DISTINCT anonymous_id FROM analytics.events
-			   WHERE client_id = {websiteId:String}
-			   AND time >= parseDateTimeBestEffort({startDate:String})
-			   AND time <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = 'screen_view'
-			   AND path = {firstStepTarget:String}`
-			: `(SELECT DISTINCT anonymous_id FROM analytics.events
-			   WHERE client_id = {websiteId:String}
-			   AND time >= parseDateTimeBestEffort({startDate:String})
-			   AND time <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = {firstStepTarget:String}
-			   UNION ALL
-			   SELECT DISTINCT anonymous_id FROM analytics.custom_events
-			   WHERE (owner_id = {websiteId:String} OR website_id = {websiteId:String})
-			   AND timestamp >= parseDateTimeBestEffort({startDate:String})
-			   AND timestamp <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = {firstStepTarget:String}
-			   AND anonymous_id IS NOT NULL AND anonymous_id != '')`;
-
-	const errorRows = await chQuery<ErrorRow>(
-		`SELECT 
-			path,
-			anonymous_id as vid,
-			error_type,
-			any(message) as message,
-			count() as error_count
-		FROM analytics.error_spans
-		WHERE client_id = {websiteId:String}
-			AND timestamp >= parseDateTimeBestEffort({startDate:String})
-			AND timestamp <= parseDateTimeBestEffort({endDate:String})
-			AND anonymous_id IN (${subquery})
-		GROUP BY path, anonymous_id, error_type
-		ORDER BY error_count DESC
-		LIMIT 1000`,
+	const firstStepSubquery = buildStepSubquery(
+		firstStep,
+		"firstStepTarget",
 		params
 	);
+
+	const lastStep = steps.at(-1);
+	const hasMultipleSteps = lastStep && steps.length > 1;
+	const lastStepSubquery = hasMultipleSteps
+		? buildStepSubquery(lastStep, "lastStepTarget", params)
+		: null;
+
+	const errorQuery = `SELECT
+		path,
+		anonymous_id as vid,
+		error_type,
+		any(message) as message,
+		count() as error_count
+	FROM analytics.error_spans
+	WHERE client_id = {websiteId:String}
+		AND timestamp >= parseDateTimeBestEffort({startDate:String})
+		AND timestamp <= parseDateTimeBestEffort({endDate:String})
+		AND anonymous_id IN (${firstStepSubquery})
+	GROUP BY path, anonymous_id, error_type
+	ORDER BY error_count DESC
+	LIMIT 1000`;
+
+	const dropoffQuery = lastStepSubquery
+		? `SELECT count(DISTINCT anonymous_id) as count
+		   FROM analytics.error_spans
+		   WHERE client_id = {websiteId:String}
+			AND timestamp >= parseDateTimeBestEffort({startDate:String})
+			AND timestamp <= parseDateTimeBestEffort({endDate:String})
+			AND anonymous_id IN (${firstStepSubquery})
+			AND anonymous_id NOT IN (${lastStepSubquery})`
+		: null;
+
+	const [errorRows, dropoffResult] = await Promise.all([
+		chQuery<ErrorRow>(errorQuery, params),
+		dropoffQuery
+			? chQuery<{ count: number }>(dropoffQuery, params)
+			: Promise.resolve([]),
+	]);
 
 	const errorsByPath = new Map<string, ErrorRow[]>();
 	const sessionsWithErrors = new Set<string>();
@@ -485,7 +459,9 @@ const queryFunnelErrors = async (
 		}
 	}
 
-	return { errorsByPath, sessionsWithErrors, totalErrors };
+	const dropoffsWithErrors = toFiniteNumber(dropoffResult[0]?.count, 0);
+
+	return { errorsByPath, sessionsWithErrors, totalErrors, dropoffsWithErrors };
 };
 
 export const queryLinkVisitorIds = async (

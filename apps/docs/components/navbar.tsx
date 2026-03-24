@@ -97,11 +97,11 @@ export const Navbar = ({ stars }: NavbarProps) => {
 	);
 };
 
-export type NavMenuItem = {
+export interface NavMenuItem {
 	name: string;
 	path: string;
 	external?: boolean;
-};
+}
 
 export const navMenu: NavMenuItem[] = [
 	{ name: "Docs", path: "/docs" },
