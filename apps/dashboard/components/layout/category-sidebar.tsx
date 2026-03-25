@@ -110,7 +110,7 @@ export function CategorySidebar({
 								type="button"
 							>
 								<MagnifyingGlassIcon
-									className="size-5 text-sidebar-primary-foreground/70"
+									className="size-5 text-sidebar-foreground/75"
 									weight="duotone"
 								/>
 							</button>
@@ -161,7 +161,7 @@ export function CategorySidebar({
 											"size-5",
 											isActive
 												? "text-sidebar-ring"
-												: "text-sidebar-primary-foreground/70"
+												: "text-sidebar-foreground/75"
 										)}
 										weight={isActive ? "fill" : "duotone"}
 									/>
@@ -191,7 +191,10 @@ export function CategorySidebar({
 							type="button"
 							variant="ghost"
 						>
-							<InfoIcon className="size-5" weight="duotone" />
+							<InfoIcon
+								className="size-5 text-sidebar-foreground/75"
+								weight="duotone"
+							/>
 						</Button>
 					</div>
 
