@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@databuddy/auth/client";
 import { useFlags } from "@databuddy/sdk/react";
 import { ListIcon, XIcon } from "@phosphor-icons/react";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { Branding } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAccordionStates } from "@/hooks/use-persistent-state";
-import { useWebsites } from "@/hooks/use-websites";
+import { useWebsitesLight } from "@/hooks/use-websites";
 import { cn } from "@/lib/utils";
 import { CategorySidebar } from "./category-sidebar";
 import { MobileCategorySelector } from "./navigation/mobile-category-selector";
@@ -34,16 +35,6 @@ interface NavigationConfig {
 	navigation: NavigationEntry[];
 	header: React.ReactNode;
 	currentWebsiteId?: string | null;
-}
-
-interface User {
-	name?: string | null;
-	email?: string | null;
-	image?: string | null;
-}
-
-interface SidebarProps {
-	user: User | null;
 }
 
 const isNavigationSection = (
@@ -84,7 +75,10 @@ const isItemActive = (
 	return pathname === fullPath || pathname.startsWith(`${fullPath}/`);
 };
 
-export function Sidebar({ user = null }: SidebarProps) {
+export function Sidebar() {
+	const { data: session } = authClient.useSession();
+	const user = session?.user ?? null;
+
 	const pathname = usePathname();
 	const [isMobileOpen, setIsMobileOpen] = useState(false);
 	const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
@@ -94,7 +88,7 @@ export function Sidebar({ user = null }: SidebarProps) {
 	const isDemo = pathname.startsWith("/demo");
 	const isWebsite = pathname.startsWith("/websites/");
 
-	const { websites, isLoading: isLoadingWebsites } = useWebsites({
+	const { websites, isLoading: isLoadingWebsites } = useWebsitesLight({
 		enabled: user !== null,
 	});
 	const accordionStates = useAccordionStates();
@@ -287,7 +281,6 @@ export function Sidebar({ user = null }: SidebarProps) {
 				<CategorySidebar
 					onCategoryChangeAction={setSelectedCategory}
 					selectedCategory={selectedCategory}
-					user={user}
 				/>
 			</div>
 
@@ -338,7 +331,6 @@ export function Sidebar({ user = null }: SidebarProps) {
 						<MobileCategorySelector
 							onCategoryChangeAction={setSelectedCategory}
 							selectedCategory={selectedCategory}
-							user={user}
 						/>
 
 						<nav aria-label="Main navigation" className="flex flex-col">

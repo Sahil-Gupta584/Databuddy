@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@databuddy/auth/client";
 import { useFlags } from "@databuddy/sdk/react";
 import { InfoIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
@@ -13,7 +14,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useWebsites } from "@/hooks/use-websites";
+import { useWebsitesLight } from "@/hooks/use-websites";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -36,25 +37,20 @@ const HelpDialog = dynamic(
 	}
 );
 
-interface User {
-	name?: string | null;
-	email?: string | null;
-	image?: string | null;
-}
-
 interface CategorySidebarProps {
 	onCategoryChangeAction?: (categoryId: string) => void;
 	selectedCategory?: string;
-	user: User | null;
 }
 
 export function CategorySidebar({
 	onCategoryChangeAction,
 	selectedCategory,
-	user = null,
 }: CategorySidebarProps) {
+	const { data: session } = authClient.useSession();
+	const user = session?.user ?? null;
+
 	const pathname = usePathname();
-	const { websites, isLoading: isLoadingWebsites } = useWebsites({
+	const { websites, isLoading: isLoadingWebsites } = useWebsitesLight({
 		enabled: user !== null,
 	});
 	const [helpOpen, setHelpOpen] = useState(false);
