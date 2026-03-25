@@ -13,6 +13,10 @@ import {
 	ResetPasswordEmail,
 	VerificationEmail,
 } from "@databuddy/email";
+import {
+	type NotificationResult,
+	sendSlackWebhook,
+} from "@databuddy/notifications";
 import { getRedisCache } from "@databuddy/redis";
 import { createId } from "@databuddy/shared/utils/ids";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -48,6 +52,42 @@ function getOrgNameFromUser(userName: string, email: string): string {
 
 function isProduction() {
 	return process.env.NODE_ENV === "production";
+}
+
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL ?? "";
+
+function notifySignUpSlackAction(input: {
+	userId: string;
+	email: string;
+	name: string | null;
+	organizationId: string;
+}): void {
+	if (!SLACK_WEBHOOK_URL) {
+		return;
+	}
+
+	sendSlackWebhook(SLACK_WEBHOOK_URL, {
+		title: "New sign-up",
+		message: "A new user created an account.",
+		priority: "normal",
+		metadata: {
+			email: input.email,
+			name: input.name ?? "—",
+			userId: input.userId,
+			organizationId: input.organizationId,
+		},
+	})
+		.then((result: NotificationResult) => {
+			if (!result.success) {
+				console.error(
+					"Failed to send Slack notification for sign-up:",
+					result.error
+				);
+			}
+		})
+		.catch((error) => {
+			console.error("Failed to send Slack notification for sign-up:", error);
+		});
 }
 
 export const auth = betterAuth({
@@ -86,6 +126,13 @@ export const auth = betterAuth({
 							role: "owner",
 							createdAt: new Date(),
 						});
+					});
+
+					notifySignUpSlackAction({
+						userId: createdUser.id,
+						email: createdUser.email,
+						name: createdUser.name,
+						organizationId: orgId,
 					});
 				},
 			},

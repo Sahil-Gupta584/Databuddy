@@ -28,6 +28,7 @@
     "@databuddy/auth": "workspace:*",
     "@databuddy/db": "workspace:*",
     "@databuddy/email": "workspace:*",
+    "@databuddy/notifications": "workspace:*",
     "@databuddy/redis": "workspace:*",
     "@databuddy/rpc": "workspace:*",
     "@databuddy/sdk": "workspace:*",

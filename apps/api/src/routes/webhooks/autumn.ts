@@ -1,5 +1,9 @@
 import { and, db, eq, gt, usageAlertLog, user } from "@databuddy/db";
 import { UsageLimitEmail } from "@databuddy/email";
+import {
+	type NotificationResult,
+	sendSlackWebhook,
+} from "@databuddy/notifications";
 import { cacheable } from "@databuddy/redis";
 import { createId } from "@databuddy/shared/utils/ids";
 import { Elysia } from "elysia";
@@ -10,6 +14,7 @@ import { mergeWideEvent } from "../../lib/tracing";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const SVIX_WEBHOOK_SECRET = process.env.AUTUMN_WEBHOOK_SECRET;
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL ?? "";
 const ALERT_COOLDOWN_DAYS = 7;
 
 interface AutumnCustomer {
@@ -61,6 +66,22 @@ interface ProductsUpdatedData {
 	scenario: ProductScenario;
 	customer: AutumnCustomer;
 	updated_product: { id: string; name: string };
+}
+
+const PLAN_PURCHASE_SLACK_SCENARIOS = new Set<ProductScenario>([
+	"new",
+	"upgrade",
+	"renew",
+]);
+
+function getPlanPurchaseVerb(scenario: ProductScenario): string {
+	if (scenario === "new") {
+		return "subscribed";
+	}
+	if (scenario === "upgrade") {
+		return "upgraded";
+	}
+	return "renewed";
 }
 
 async function _getUserEmail(customerId: string): Promise<string | null> {
@@ -225,6 +246,51 @@ async function handleThresholdReached(
 	return { success: true, message: "Email sent successfully" };
 }
 
+function notifyPlanPurchaseSlackAction(payload: ProductsUpdatedData): void {
+	if (!SLACK_WEBHOOK_URL) {
+		return;
+	}
+
+	const { scenario, customer, updated_product } = payload;
+
+	if (!PLAN_PURCHASE_SLACK_SCENARIOS.has(scenario)) {
+		return;
+	}
+
+	if (process.env.NODE_ENV === "production" && customer.env === "sandbox") {
+		return;
+	}
+
+	sendSlackWebhook(SLACK_WEBHOOK_URL, {
+		title: "Plan purchase",
+		message: `Customer ${getPlanPurchaseVerb(scenario)} to a plan.`,
+		priority: "normal",
+		metadata: {
+			scenario,
+			productId: updated_product.id,
+			productName: updated_product.name,
+			customerId: customer.id,
+			email: customer.email ?? "—",
+			name: customer.name ?? "—",
+			env: customer.env,
+		},
+	})
+		.then((result: NotificationResult) => {
+			if (!result.success) {
+				useLogger().error(
+					new Error(result.error ?? "Slack notification failed"),
+					{ autumn: { slackPlanPurchase: true, customerId: customer.id } }
+				);
+			}
+		})
+		.catch((error) => {
+			useLogger().error(
+				error instanceof Error ? error : new Error(String(error)),
+				{ autumn: { slackPlanPurchase: true, customerId: customer.id } }
+			);
+		});
+}
+
 function handleProductsUpdated(payload: ProductsUpdatedData): {
 	success: boolean;
 	message: string;
@@ -238,6 +304,8 @@ function handleProductsUpdated(payload: ProductsUpdatedData): {
 			product: updated_product.id,
 		},
 	});
+
+	notifyPlanPurchaseSlackAction(payload);
 
 	return { success: true, message: `Processed ${scenario} event` };
 }
