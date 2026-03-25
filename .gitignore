@@ -45,6 +45,9 @@ yarn-error.log*
 
 # Misc
 .DS_Store
+
+# Local agent skill checkouts (not vendored in repo)
+.agents/skills/gstack/
 *.pem
 
 *.mmdb
