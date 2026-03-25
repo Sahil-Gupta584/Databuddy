@@ -98,7 +98,6 @@ export default function LinksPage() {
 			<div className="flex h-full flex-col">
 				<PageHeader
 					badgeContent="Early Access"
-					className="h-[88px]"
 					count={isLoading ? undefined : links.length}
 					description="Create and track short links with analytics"
 					icon={<LinkIcon weight="duotone" />}

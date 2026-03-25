@@ -1,7 +1,6 @@
 "use client";
 
 import { authClient } from "@databuddy/auth/client";
-import { PLAN_IDS, type PlanId } from "@databuddy/shared/types/features";
 import {
 	CaretDownIcon,
 	CheckIcon,
@@ -13,13 +12,11 @@ import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
 import { CreateOrganizationDialog } from "@/components/organizations/create-organization-dialog";
-import { useBillingContext } from "@/components/providers/billing-provider";
 import {
 	AUTH_QUERY_KEYS,
 	useOrganizationsContext,
 } from "@/components/providers/organizations-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -33,23 +30,6 @@ import { cn } from "@/lib/utils";
 
 const getDicebearUrl = (seed: string | undefined) =>
 	`https://api.dicebear.com/9.x/glass/svg?seed=${encodeURIComponent(seed || "")}`;
-
-const getPlanDisplayInfo = (planId: PlanId | null) => {
-	if (!planId || planId === PLAN_IDS.FREE) {
-		return { name: "Free", variant: "gray" as const };
-	}
-	if (planId === PLAN_IDS.HOBBY) {
-		return { name: "Hobby", variant: "blue" as const };
-	}
-	if (planId === PLAN_IDS.PRO) {
-		return { name: "Pro", variant: "green" as const };
-	}
-	if (planId === PLAN_IDS.SCALE) {
-		return { name: "Scale", variant: "amber" as const };
-	}
-
-	return null;
-};
 
 const MENU_ITEM_BASE_CLASSES =
 	"flex h-10 cursor-pointer items-center gap-3 px-4 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground";
@@ -82,17 +62,13 @@ interface OrganizationSelectorTriggerProps {
 	} | null;
 	isOpen: boolean;
 	isSettingActiveOrganization: boolean;
-	currentPlanId: PlanId | null;
 }
 
 function OrganizationSelectorTrigger({
 	activeOrganization,
 	isOpen,
 	isSettingActiveOrganization,
-	currentPlanId,
 }: OrganizationSelectorTriggerProps) {
-	const planInfo = getPlanDisplayInfo(currentPlanId);
-
 	return (
 		<div
 			className={cn(
@@ -127,17 +103,9 @@ function OrganizationSelectorTrigger({
 					</Avatar>
 				</div>
 				<div className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden">
-					<div className="flex min-w-0 items-center gap-2">
-						<span className="min-w-0 flex-1 truncate text-left font-semibold text-sidebar-accent-foreground text-sm">
-							{activeOrganization?.name ?? "Select workspace"}
-						</span>
-						<Badge
-							className="shrink-0 py-1 text-xs leading-none"
-							variant={planInfo?.variant || "gray"}
-						>
-							{planInfo?.name || "Free"}
-						</Badge>
-					</div>
+					<span className="min-w-0 truncate text-left font-semibold text-sidebar-accent-foreground text-sm">
+						{activeOrganization?.name ?? "Select workspace"}
+					</span>
 					<p className="truncate text-left text-sidebar-accent-foreground/70 text-xs">
 						{activeOrganization?.slug ?? "No workspace selected"}
 					</p>
@@ -165,7 +133,6 @@ export function OrganizationSelector() {
 	const queryClient = useQueryClient();
 	const { organizations, activeOrganization, isLoading } =
 		useOrganizationsContext();
-	const { currentPlanId } = useBillingContext();
 	const [isOpen, setIsOpen] = useState(false);
 	const [showCreateDialog, setShowCreateDialog] = useState(false);
 	const [query, setQuery] = useState("");
@@ -241,7 +208,6 @@ export function OrganizationSelector() {
 					>
 						<OrganizationSelectorTrigger
 							activeOrganization={activeOrganization}
-							currentPlanId={currentPlanId}
 							isOpen={isOpen}
 							isSettingActiveOrganization={isSwitching}
 						/>

@@ -39,7 +39,7 @@ export const PageHeader = memo(
 	}: PageHeaderProps) => (
 		<div
 			className={cn(
-				"relative flex shrink-0 items-center justify-between gap-2 border-b p-3 sm:p-4",
+				"relative flex min-h-[88px] shrink-0 items-center justify-between gap-2 border-b p-3 sm:p-4",
 				className
 			)}
 		>

@@ -10,19 +10,19 @@ const badgeVariants = cva(
 		variants: {
 			variant: {
 				default:
-					'badge-angled-rectangle-gradient border border-brand-purple/30 bg-brand-purple text-white [a&]:hover:bg-brand-purple/90 dark:border-brand-purple/50 dark:bg-brand-purple/80',
+					'border border-brand-purple/35 bg-brand-purple text-white [a&]:hover:bg-brand-purple/90 dark:border-brand-purple/55 dark:bg-brand-purple dark:text-white',
 				gray:
-					'border angled-rectangle-gradient border-border bg-accent text-accent-foreground [a&]:hover:bg-secondary/90 dark:border-border dark:bg-accent/50',
+					'border border-border bg-muted text-muted-foreground [a&]:hover:bg-muted/90 dark:border-border dark:bg-secondary dark:text-muted-foreground',
 				blue:
-					'border border-brand-purple/20 blue-angled-rectangle-gradient bg-brand-purple/10 text-brand-purple [a&]:hover:bg-brand-purple/15 dark:border-brand-purple/30 dark:bg-brand-purple/20 dark:text-[#8B80BF]',
+					'border border-brand-purple/25 bg-brand-purple/10 text-brand-purple [a&]:hover:bg-brand-purple/15 dark:border-brand-purple/40 dark:bg-brand-purple/18 dark:text-[#C9BFE8]',
 				green:
-					'border border-emerald-600/20 green-angled-rectangle-gradient bg-emerald-50 text-emerald-700 [a&]:hover:bg-emerald-100/90 dark:border-emerald-700/30 dark:bg-emerald-900/20 dark:text-emerald-400',
+					'border border-emerald-600/25 bg-emerald-50 text-emerald-800 [a&]:hover:bg-emerald-100/90 dark:border-emerald-500/35 dark:bg-emerald-950/50 dark:text-emerald-300',
 				amber:
-					'amber-angled-rectangle-gradient border border-brand-amber/20 bg-brand-amber/10 text-brand-amber [a&]:hover:bg-brand-amber/15 dark:border-brand-amber/30 dark:bg-brand-amber/15 dark:text-[#F0BA4D]',
+					'border border-brand-amber/30 bg-brand-amber/12 text-amber-950 [a&]:hover:bg-brand-amber/18 dark:border-brand-amber/40 dark:bg-brand-amber/14 dark:text-amber-300',
 				secondary:
-					'border border-foreground/20 dark-angled-rectangle-gradient bg-foreground text-background [a&]:hover:bg-foreground/90 dark:border-foreground/30 dark:bg-foreground/80',
+					'border border-foreground/15 bg-foreground text-background [a&]:hover:bg-foreground/90 dark:border-foreground/25 dark:bg-foreground dark:text-background',
 				destructive:
-					'border red-angled-rectangle-gradient border-brand-coral/20 bg-brand-coral/10 text-brand-coral focus-visible:ring-brand-coral/20 [a&]:hover:bg-brand-coral/15 dark:border-brand-coral/30 dark:bg-brand-coral/20 dark:text-[#D4658A]',
+					'border border-brand-coral/30 bg-brand-coral/12 text-brand-coral focus-visible:ring-brand-coral/20 [a&]:hover:bg-brand-coral/18 dark:border-brand-coral/45 dark:bg-brand-coral/22 dark:text-[#E8A8BE]',
 				outline:
 					'border border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
 			},
