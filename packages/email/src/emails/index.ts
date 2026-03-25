@@ -1,8 +1,11 @@
 export { sanitizeEmailText } from "../utils/sanitize";
+export { emailBrand } from "./email-brand";
 export * from "./email-button";
 export * from "./email-footer";
 export * from "./email-header";
 export * from "./email-layout";
+export * from "./email-link-fallback";
+export * from "./email-note";
 export * from "./invitation-email";
 export * from "./magic-link-email";
 export * from "./otp-email";

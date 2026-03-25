@@ -1,7 +1,10 @@
-import { Heading, Link, Section, Text } from "@react-email/components";
+import { Heading, Section, Text } from "@react-email/components";
 import { sanitizeEmailText } from "../utils/sanitize";
+import { emailBrand } from "./email-brand";
 import { EmailButton } from "./email-button";
 import { EmailLayout } from "./email-layout";
+import { EmailLinkFallback } from "./email-link-fallback";
+import { EmailNote } from "./email-note";
 
 interface InvitationEmailProps {
 	inviterName: string;
@@ -14,31 +17,31 @@ export const InvitationEmail = ({
 	organizationName,
 	invitationLink,
 }: InvitationEmailProps) => {
-	const safeOrganizationName = sanitizeEmailText(organizationName) || "a team";
-	const safeInviterName = sanitizeEmailText(inviterName) || "A team member";
+	const safeOrg = sanitizeEmailText(organizationName) || "a team";
+	const safeName = sanitizeEmailText(inviterName) || "A team member";
 
 	return (
 		<EmailLayout
-			preview={`Join ${safeOrganizationName} on Databuddy`}
+			preview={`Join ${safeOrg} on Databuddy`}
 			tagline="Team Invitation"
 		>
 			<Section className="text-center">
 				<Heading
 					className="m-0 mb-3 font-semibold text-xl tracking-tight"
-					style={{ color: "#d7d7dd" }}
+					style={{ color: emailBrand.foreground }}
 				>
 					You're Invited!
 				</Heading>
 				<Text
 					className="m-0 mb-6 text-sm leading-relaxed"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
-					<span style={{ color: "#d7d7dd", fontWeight: 500 }}>
-						{safeInviterName}
+					<span style={{ color: emailBrand.foreground, fontWeight: 500 }}>
+						{safeName}
 					</span>{" "}
 					has invited you to join{" "}
-					<span style={{ color: "#d7d7dd", fontWeight: 500 }}>
-						{safeOrganizationName}
+					<span style={{ color: emailBrand.foreground, fontWeight: 500 }}>
+						{safeOrg}
 					</span>{" "}
 					on Databuddy.
 				</Text>
@@ -46,36 +49,11 @@ export const InvitationEmail = ({
 			<Section className="text-center">
 				<EmailButton href={invitationLink}>Accept Invitation</EmailButton>
 			</Section>
-			<Section className="mt-8">
-				<Text
-					className="m-0 mb-2 text-center text-xs"
-					style={{ color: "#717175" }}
-				>
-					This invitation expires in 48 hours.
-				</Text>
-				<Text
-					className="m-0 text-center text-xs leading-relaxed"
-					style={{ color: "#717175" }}
-				>
-					If you weren't expecting this invitation, you can safely ignore this
-					email.
-				</Text>
-			</Section>
-			<Section
-				className="mt-6 rounded p-4"
-				style={{ backgroundColor: "#111114" }}
-			>
-				<Text className="m-0 mb-2 text-xs" style={{ color: "#717175" }}>
-					Having trouble with the button? Copy and paste this link:
-				</Text>
-				<Link
-					className="text-xs underline"
-					href={invitationLink}
-					style={{ color: "#3030ed", wordBreak: "break-all" }}
-				>
-					{invitationLink}
-				</Link>
-			</Section>
+			<EmailNote>
+				This invitation expires in 48 hours. If you weren't expecting this, you
+				can safely ignore this email.
+			</EmailNote>
+			<EmailLinkFallback href={invitationLink} />
 		</EmailLayout>
 	);
 };

@@ -1,9 +1,10 @@
 import { Heading, Link, Section, Text } from "@react-email/components";
 import { sanitizeEmailText } from "../utils/sanitize";
+import { emailBrand } from "./email-brand";
 import { EmailButton } from "./email-button";
 import { EmailLayout } from "./email-layout";
 
-const utcMediumFormatter = new Intl.DateTimeFormat("en-US", {
+const utcFormatter = new Intl.DateTimeFormat("en-US", {
 	timeZone: "UTC",
 	year: "numeric",
 	month: "short",
@@ -15,70 +16,83 @@ const utcMediumFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export interface UptimeAlertEmailProps {
-	kind: "down" | "recovered";
-	siteLabel: string;
-	url: string;
-	checkedAt: number;
-	httpCode: number;
-	error: string;
+	kind?: "down" | "recovered";
+	siteLabel?: string;
+	url?: string;
+	checkedAt?: number;
+	httpCode?: number;
+	error?: string;
 	probeRegion?: string;
 	totalMs?: number;
 	ttfbMs?: number;
 	sslValid?: boolean;
 	sslExpiryMs?: number;
-	/** Optional link to the monitor or site in the dashboard */
 	dashboardUrl?: string;
 }
 
-function formatCheckedAt(ms: number): string {
-	return utcMediumFormatter.format(new Date(ms));
-}
-
-function formatDurationMs(ms: number | undefined): string | undefined {
+function fmtMs(ms: number | undefined): string | undefined {
 	if (ms === undefined || Number.isNaN(ms)) {
 		return undefined;
 	}
 	return `${Math.round(ms)} ms`;
 }
 
-function safeHttpUrlForHref(raw: string): string {
+function fmtDate(ms: number | undefined): string {
+	if (ms === undefined || !Number.isFinite(ms)) {
+		return "—";
+	}
+	return utcFormatter.format(new Date(ms));
+}
+
+function safeHref(raw: string | undefined): string {
+	if (!raw) {
+		return "https://app.databuddy.cc/";
+	}
 	try {
 		const parsed = new URL(raw);
 		if (parsed.protocol === "http:" || parsed.protocol === "https:") {
 			return parsed.href;
 		}
 	} catch {
-		// ignore
+		/* invalid */
 	}
 	return "https://app.databuddy.cc/";
 }
 
-function sslLineFrom(
-	sslValid: boolean | undefined,
-	sslExpiryMs: number | undefined
+function sslSummary(
+	valid: boolean | undefined,
+	expiryMs: number | undefined
 ): string | undefined {
-	if (sslValid === undefined) {
+	if (valid === undefined) {
 		return undefined;
 	}
-	const status = sslValid ? "Valid" : "Invalid";
-	if (
-		sslExpiryMs !== undefined &&
-		sslExpiryMs > 0 &&
-		Number.isFinite(sslExpiryMs)
-	) {
-		const exp = utcMediumFormatter.format(new Date(sslExpiryMs));
-		return `${status} · expires ${exp}`;
+	const status = valid ? "Valid" : "Invalid";
+	if (expiryMs !== undefined && expiryMs > 0 && Number.isFinite(expiryMs)) {
+		return `${status} · expires ${fmtDate(expiryMs)}`;
 	}
 	return status;
 }
 
+const DetailRow = ({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) => (
+	<Text className="m-0 mb-2 text-sm" style={{ color: emailBrand.foreground }}>
+		<span style={{ color: emailBrand.muted }}>{label} · </span>
+		{children}
+	</Text>
+);
+
 export const UptimeAlertEmail = ({
-	kind,
-	siteLabel,
-	url,
+	kind = "down",
+	siteLabel = "example.com",
+	url = "https://example.com",
 	checkedAt,
-	httpCode,
-	error,
+	httpCode = 0,
+	error = "",
 	probeRegion,
 	totalMs,
 	ttfbMs,
@@ -86,19 +100,13 @@ export const UptimeAlertEmail = ({
 	sslExpiryMs,
 	dashboardUrl,
 }: UptimeAlertEmailProps) => {
-	const safeLabel = sanitizeEmailText(siteLabel);
+	const safe = sanitizeEmailText(siteLabel) || "your site";
 	const isDown = kind === "down";
-	const preview = isDown
-		? `${safeLabel} is unreachable`
-		: `${safeLabel} is back online`;
-	const heading = isDown
-		? `Uptime: ${safeLabel} is down`
-		: `Uptime: ${safeLabel} is back up`;
-	const tagline = isDown ? "Uptime alert" : "Site recovered";
 	const accentBorder = isDown ? "#dc2626" : "#22c55e";
-	const href = safeHttpUrlForHref(url);
-	const ttfbStr = formatDurationMs(ttfbMs);
-	const totalStr = formatDurationMs(totalMs);
+	const href = safeHref(url);
+
+	const ttfbStr = fmtMs(ttfbMs);
+	const totalStr = fmtMs(totalMs);
 	const responseParts: string[] = [];
 	if (ttfbStr !== undefined) {
 		responseParts.push(`TTFB ${ttfbStr}`);
@@ -107,90 +115,66 @@ export const UptimeAlertEmail = ({
 		responseParts.push(`total ${totalStr}`);
 	}
 	const responseLine = responseParts.join(" · ");
-	const sslLine = sslLineFrom(sslValid, sslExpiryMs);
-	const errorTrimmed = error.trim();
-	const safeError =
-		isDown && errorTrimmed.length > 0 ? sanitizeEmailText(errorTrimmed) : "";
+	const ssl = sslSummary(sslValid, sslExpiryMs);
+	const trimmedErr = error.trim();
+	const safeErr =
+		isDown && trimmedErr.length > 0 ? sanitizeEmailText(trimmedErr) : "";
 
 	return (
-		<EmailLayout preview={preview} tagline={tagline}>
+		<EmailLayout
+			preview={isDown ? `${safe} is unreachable` : `${safe} is back online`}
+			tagline={isDown ? "Uptime alert" : "Site recovered"}
+		>
 			<Section className="text-center">
 				<Heading
 					className="m-0 mb-3 font-semibold text-xl tracking-tight"
-					style={{ color: "#d7d7dd" }}
+					style={{ color: emailBrand.foreground }}
 				>
-					{heading}
+					{isDown ? `${safe} is down` : `${safe} is back up`}
 				</Heading>
-			</Section>
-
-			<Section className="mt-2">
 				<Text
 					className="m-0 mb-4 text-sm leading-relaxed"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
 					{isDown
-						? "We could not reach this URL during the latest health check. Details below."
+						? "We could not reach this URL during the latest health check."
 						: "The latest health check succeeded. Your site responded normally."}
 				</Text>
 			</Section>
 
 			<Section
-				className="my-6 rounded p-4"
+				className="my-4 rounded p-4"
 				style={{
-					backgroundColor: "#111114",
-					border: "1px solid #28282c",
+					backgroundColor: emailBrand.inset,
+					border: `1px solid ${emailBrand.border}`,
 					borderLeft: `4px solid ${accentBorder}`,
 				}}
 			>
-				<Text
-					className="m-0 mb-3 text-xs uppercase tracking-wider"
-					style={{ color: "#717175" }}
-				>
-					Check details
-				</Text>
-				<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-					<span style={{ color: "#717175" }}>URL · </span>
+				<DetailRow label="URL">
 					<Link
 						className="text-sm underline"
 						href={href}
-						style={{ color: "#3030ed", wordBreak: "break-all" }}
+						style={{ color: emailBrand.coral, wordBreak: "break-all" }}
 					>
-						{sanitizeEmailText(url)}
+						{sanitizeEmailText(url) || href}
 					</Link>
-				</Text>
-				<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-					<span style={{ color: "#717175" }}>Checked at · </span>
-					{formatCheckedAt(checkedAt)}
-				</Text>
-				<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-					<span style={{ color: "#717175" }}>HTTP · </span>
-					{httpCode}
-				</Text>
+				</DetailRow>
+				<DetailRow label="Checked at">{fmtDate(checkedAt)}</DetailRow>
+				<DetailRow label="HTTP">{httpCode}</DetailRow>
 				{responseLine.length > 0 ? (
-					<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-						<span style={{ color: "#717175" }}>Response · </span>
-						{responseLine}
-					</Text>
+					<DetailRow label="Response">{responseLine}</DetailRow>
 				) : null}
 				{probeRegion ? (
-					<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-						<span style={{ color: "#717175" }}>Region · </span>
-						{sanitizeEmailText(probeRegion)}
-					</Text>
+					<DetailRow label="Region">{sanitizeEmailText(probeRegion)}</DetailRow>
 				) : null}
-				{sslLine ? (
-					<Text className="m-0 mb-2 text-sm" style={{ color: "#d7d7dd" }}>
-						<span style={{ color: "#717175" }}>SSL · </span>
-						{sslLine}
-					</Text>
-				) : null}
-				{safeError.length > 0 ? (
+				{ssl ? <DetailRow label="SSL">{ssl}</DetailRow> : null}
+				{safeErr.length > 0 ? (
 					<Text
 						className="m-0 mt-3 text-sm leading-relaxed"
 						style={{ color: "#fca5a5" }}
 					>
-						<span style={{ color: "#717175" }}>Error · </span>
-						{safeError}
+						<span style={{ color: emailBrand.muted }}>Error · </span>
+						{safeErr}
 					</Text>
 				) : null}
 			</Section>
@@ -204,12 +188,12 @@ export const UptimeAlertEmail = ({
 			<Section className="mt-8">
 				<Text
 					className="m-0 text-center text-xs leading-relaxed"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
 					Need help? Reply to this email or visit our{" "}
 					<Link
-						href="https://databuddy.cc/docs"
-						style={{ color: "#3030ed", textDecoration: "underline" }}
+						href="https://www.databuddy.cc/docs"
+						style={{ color: emailBrand.coral, textDecoration: "underline" }}
 					>
 						documentation
 					</Link>

@@ -1,4 +1,5 @@
 import { Heading, Link, Section, Text } from "@react-email/components";
+import { emailBrand } from "./email-brand";
 import { EmailButton } from "./email-button";
 import { EmailLayout } from "./email-layout";
 
@@ -29,11 +30,9 @@ export const UsageLimitEmail = ({
 }: UsageLimitEmailProps) => {
 	const greeting = userName ? `Hi ${userName},` : "Hi there,";
 	const isLimitReached = thresholdType === "limit_reached";
-
 	const usageFormatted = formatNumber(usageAmount);
 	const limitFormatted = formatNumber(limitAmount);
-	const gracePeriodLimit = Math.floor(limitAmount * 1.5);
-	const gracePeriodFormatted = formatNumber(gracePeriodLimit);
+	const graceFormatted = formatNumber(Math.floor(limitAmount * 1.5));
 
 	return (
 		<EmailLayout
@@ -43,7 +42,7 @@ export const UsageLimitEmail = ({
 			<Section className="text-center">
 				<Heading
 					className="m-0 mb-3 font-semibold text-xl tracking-tight"
-					style={{ color: "#d7d7dd" }}
+					style={{ color: emailBrand.foreground }}
 				>
 					{isLimitReached
 						? `${featureName} Limit Reached`
@@ -54,56 +53,42 @@ export const UsageLimitEmail = ({
 			<Section className="mt-4">
 				<Text
 					className="m-0 mb-4 text-sm leading-relaxed"
-					style={{ color: "#d7d7dd" }}
+					style={{ color: emailBrand.foreground }}
 				>
 					{greeting}
 				</Text>
 				<Text
 					className="m-0 mb-4 text-sm leading-relaxed"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
-					{isLimitReached
-						? `You've used all ${limitFormatted} of your included ${featureName.toLowerCase()} for this billing period. You can continue using up to ${gracePeriodFormatted} (1.5x your limit) before tracking is paused.`
-						: `You've exhausted your ${featureName.toLowerCase()} allowance for this period. You can continue using up to ${gracePeriodFormatted} (1.5x your limit) before tracking is paused.`}
+					You've used all {limitFormatted} of your included{" "}
+					{featureName.toLowerCase()} this billing period. You can continue up
+					to {graceFormatted} (1.5x) before tracking is paused. To avoid
+					interruption, consider upgrading your plan.
 				</Text>
 			</Section>
 
 			<Section
 				className="my-6 rounded p-4"
-				style={{ backgroundColor: "#111114", border: "1px solid #28282c" }}
+				style={{
+					backgroundColor: emailBrand.inset,
+					border: `1px solid ${emailBrand.border}`,
+				}}
 			>
 				<Text
 					className="m-0 mb-1 text-center text-xs uppercase tracking-wider"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
 					Current Usage
 				</Text>
 				<Text
 					className="m-0 text-center font-semibold text-2xl"
-					style={{ color: "#d7d7dd" }}
+					style={{ color: emailBrand.foreground }}
 				>
 					{usageFormatted}{" "}
-					<span style={{ color: "#717175", fontWeight: "normal" }}>
+					<span style={{ color: emailBrand.muted, fontWeight: "normal" }}>
 						/ {limitFormatted}
 					</span>
-				</Text>
-				<Text
-					className="m-0 mt-2 text-center text-xs"
-					style={{ color: "#717175" }}
-				>
-					Grace period: up to {gracePeriodFormatted} before blocking
-				</Text>
-			</Section>
-
-			<Section>
-				<Text
-					className="m-0 mb-4 text-sm leading-relaxed"
-					style={{ color: "#717175" }}
-				>
-					You have a grace period and can continue using up to 1.5x your limit
-					before tracking is paused. To avoid interruption, consider upgrading
-					your plan. You can also wait until your usage resets at the start of
-					your next billing period.
 				</Text>
 			</Section>
 
@@ -116,12 +101,12 @@ export const UsageLimitEmail = ({
 			<Section className="mt-8">
 				<Text
 					className="m-0 text-center text-xs leading-relaxed"
-					style={{ color: "#717175" }}
+					style={{ color: emailBrand.muted }}
 				>
 					Need help? Reply to this email or visit our{" "}
 					<Link
-						href="https://databuddy.cc/docs"
-						style={{ color: "#3030ed", textDecoration: "underline" }}
+						href="https://www.databuddy.cc/docs"
+						style={{ color: emailBrand.coral, textDecoration: "underline" }}
 					>
 						documentation
 					</Link>

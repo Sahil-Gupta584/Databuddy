@@ -7,6 +7,7 @@ import {
 	Section,
 	Tailwind,
 } from "@react-email/components";
+import { emailBrand } from "./email-brand";
 import { EmailFooter } from "./email-footer";
 import { EmailHeader } from "./email-header";
 
@@ -31,14 +32,15 @@ export const EmailLayout = ({
 				theme: {
 					extend: {
 						colors: {
-							brand: "#3030ed",
-							background: "#111114",
-							card: "#1a1a1d",
-							foreground: "#d7d7dd",
-							"card-foreground": "#d7d7dd",
-							border: "#28282c",
-							muted: "#717175",
-							"muted-foreground": "#717175",
+							brand: emailBrand.amber,
+							"brand-foreground": emailBrand.onAmber,
+							background: emailBrand.background,
+							card: emailBrand.card,
+							foreground: emailBrand.foreground,
+							"card-foreground": emailBrand.foreground,
+							border: emailBrand.border,
+							muted: emailBrand.muted,
+							"muted-foreground": emailBrand.muted,
 						},
 					},
 				},
@@ -49,7 +51,7 @@ export const EmailLayout = ({
 					<EmailHeader tagline={tagline} />
 					<Section
 						className="rounded bg-card px-8 py-6"
-						style={{ border: "1px solid #28282c" }}
+						style={{ border: `1px solid ${emailBrand.border}` }}
 					>
 						{children}
 					</Section>
