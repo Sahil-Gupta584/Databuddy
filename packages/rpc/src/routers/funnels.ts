@@ -1,11 +1,4 @@
-import {
-	and,
-	desc,
-	eq,
-	funnelDefinitions,
-	isNull,
-	sql,
-} from "@databuddy/db";
+import { and, desc, eq, funnelDefinitions, isNull, sql } from "@databuddy/db";
 import { createDrizzleCache, redis } from "@databuddy/redis";
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
 import { randomUUIDv7 } from "bun";
@@ -15,13 +8,10 @@ import {
 	type AnalyticsStep,
 	processFunnelAnalytics,
 	processFunnelAnalyticsByReferrer,
+	queryLinkVisitorIds,
 } from "../lib/analytics-utils";
 import { protectedProcedure, publicProcedure } from "../orpc";
-import {
-	withWebsiteRead,
-	withWebsiteWrite,
-	withWorkspace,
-} from "../procedures/with-workspace";
+import { withWebsiteRead, withWorkspace } from "../procedures/with-workspace";
 import { requireFeatureWithLimit } from "../types/billing";
 
 const cache = createDrizzleCache({ redis, namespace: "funnels" });
@@ -119,6 +109,69 @@ const funnelOutputSchema = z.object({
 
 const successOutputSchema = z.object({ success: z.literal(true) });
 
+const stepErrorInsightOutputSchema = z.object({
+	message: z.string(),
+	error_type: z.string(),
+	count: z.number(),
+});
+
+const stepAnalyticsOutputSchema = z.object({
+	step_number: z.number(),
+	step_name: z.string(),
+	users: z.number(),
+	total_users: z.number(),
+	conversion_rate: z.number(),
+	dropoffs: z.number(),
+	dropoff_rate: z.number(),
+	avg_time_to_complete: z.number(),
+	error_count: z.number(),
+	error_rate: z.number(),
+	top_errors: z.array(stepErrorInsightOutputSchema),
+});
+
+const timeSeriesPointSchema = z.object({
+	date: z.string(),
+	users: z.number(),
+	conversions: z.number(),
+	conversion_rate: z.number(),
+	dropoffs: z.number(),
+	avg_time: z.number(),
+});
+
+const funnelAnalyticsOutputSchema = z.object({
+	overall_conversion_rate: z.number(),
+	total_users_entered: z.number(),
+	total_users_completed: z.number(),
+	avg_completion_time: z.number(),
+	avg_completion_time_formatted: z.string(),
+	biggest_dropoff_step: z.number(),
+	biggest_dropoff_rate: z.number(),
+	steps_analytics: z.array(stepAnalyticsOutputSchema),
+	time_series: z.array(timeSeriesPointSchema).optional(),
+	error_insights: z.object({
+		total_errors: z.number(),
+		sessions_with_errors: z.number(),
+		dropoffs_with_errors: z.number(),
+		error_correlation_rate: z.number(),
+	}),
+});
+
+const referrerAnalyticsOutputSchema = z.object({
+	referrer: z.string(),
+	referrer_parsed: z.object({
+		name: z.string(),
+		type: z.string(),
+		domain: z.string(),
+	}),
+	total_users: z.number(),
+	completed_users: z.number(),
+	conversion_rate: z.number(),
+});
+
+const funnelAnalyticsByReferrerOutputSchema = z.object({
+	referrer_analytics: z.array(referrerAnalyticsOutputSchema),
+});
+
 export const funnelsRouter = {
 	list: publicProcedure
 		.route({
@@ -134,6 +187,7 @@ export const funnelsRouter = {
 		.handler(({ context, input }) =>
 			cache.withCache({
 				key: `list:${input.websiteId}`,
+				disabled: true, // TODO: Remove this once we have a way to invalidate the cache
 				ttl: CACHE_TTL,
 				tables: ["funnelDefinitions"],
 				queryFn: async () => {
@@ -181,6 +235,7 @@ export const funnelsRouter = {
 		.handler(({ context, input }) =>
 			cache.withCache({
 				key: `byId:${input.id}:${input.websiteId}`,
+				disabled: true, // TODO: Remove this once we have a way to invalidate the cache
 				ttl: CACHE_TTL,
 				tables: ["funnelDefinitions"],
 				queryFn: async () => {
@@ -387,10 +442,9 @@ export const funnelsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
-		.output(z.record(z.string(), z.unknown()))
+		.output(funnelAnalyticsOutputSchema)
 		.use(withWebsiteRead)
 		.handler(async ({ context, input }) => {
-
 			const { startDate, endDate } =
 				input.startDate && input.endDate
 					? { startDate: input.startDate, endDate: input.endDate }
@@ -460,10 +514,9 @@ export const funnelsRouter = {
 				endDate: z.string().optional(),
 			})
 		)
-		.output(z.record(z.string(), z.unknown()))
+		.output(funnelAnalyticsByReferrerOutputSchema)
 		.use(withWebsiteRead)
 		.handler(async ({ context, input }) => {
-
 			const { startDate, endDate } =
 				input.startDate && input.endDate
 					? { startDate: input.startDate, endDate: input.endDate }
@@ -512,6 +565,104 @@ export const funnelsRouter = {
 							startDate: effectiveStartDate,
 							endDate: `${endDate} 23:59:59`,
 						}
+					),
+			});
+		}),
+
+	getAnalyticsByLink: publicProcedure
+		.route({
+			description:
+				"Returns funnel analytics filtered to visitors who arrived via a specific link. Requires website read permission.",
+			method: "POST",
+			path: "/funnels/getAnalyticsByLink",
+			summary: "Get funnel analytics by link",
+			tags: ["Funnels"],
+		})
+		.input(
+			z.object({
+				funnelId: z.string(),
+				websiteId: z.string(),
+				linkId: z.string(),
+				startDate: z.string().optional(),
+				endDate: z.string().optional(),
+			})
+		)
+		.output(funnelAnalyticsOutputSchema)
+		.use(withWebsiteRead)
+		.handler(async ({ context, input }) => {
+			const { startDate, endDate } =
+				input.startDate && input.endDate
+					? { startDate: input.startDate, endDate: input.endDate }
+					: getDefaultDateRange();
+
+			const [funnel] = await context.db
+				.select()
+				.from(funnelDefinitions)
+				.where(
+					and(
+						eq(funnelDefinitions.id, input.funnelId),
+						eq(funnelDefinitions.websiteId, input.websiteId),
+						isNull(funnelDefinitions.deletedAt)
+					)
+				)
+				.limit(1);
+
+			if (!funnel) {
+				throw rpcError.notFound("funnel", input.funnelId);
+			}
+
+			const steps = funnel.steps as Step[];
+			if (!steps?.length) {
+				throw rpcError.badRequest("Funnel has no steps");
+			}
+
+			const effectiveStartDate = getEffectiveStartDate(
+				startDate,
+				funnel.createdAt,
+				funnel.ignoreHistoricData
+			);
+
+			const queryParams = {
+				websiteId: input.websiteId,
+				startDate: effectiveStartDate,
+				endDate: `${endDate} 23:59:59`,
+			};
+
+			const linkVisitors = await queryLinkVisitorIds(input.linkId, queryParams);
+
+			if (linkVisitors.size === 0) {
+				return {
+					overall_conversion_rate: 0,
+					total_users_entered: 0,
+					total_users_completed: 0,
+					avg_completion_time: 0,
+					avg_completion_time_formatted: "—",
+					biggest_dropoff_step: 1,
+					biggest_dropoff_rate: 0,
+					steps_analytics: [],
+					error_insights: {
+						total_errors: 0,
+						sessions_with_errors: 0,
+						dropoffs_with_errors: 0,
+						error_correlation_rate: 0,
+					},
+				};
+			}
+
+			const cacheKey = `analyticsByLink:${input.funnelId}:${input.linkId}:${effectiveStartDate}:${endDate}`;
+
+			return cache.withCache({
+				key: cacheKey,
+				disabled: true, // TODO: Remove this once we have a way to invalidate the cache
+				ttl: ANALYTICS_CACHE_TTL,
+				tables: ["funnelDefinitions"],
+				tag: `funnel:${input.funnelId}`,
+				queryFn: () =>
+					processFunnelAnalytics(
+						toAnalyticsSteps(steps),
+						(funnel.filters as Filter[]) || [],
+						queryParams,
+						linkVisitors
 					),
 			});
 		}),

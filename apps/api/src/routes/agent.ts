@@ -9,10 +9,17 @@ import {
 	type UIMessage,
 } from "ai";
 import { Elysia, t } from "elysia";
+import { useLogger } from "evlog/elysia";
 import type { AgentConfig, AgentType } from "../ai/agents";
 import { createAgentConfig } from "../ai/agents";
 import { trackAgentEvent } from "../lib/databuddy";
-import { captureError, record, setAttributes } from "../lib/tracing";
+import {
+	formatMemoryForPrompt,
+	getMemoryContext,
+	isMemoryEnabled,
+	storeConversation,
+} from "../lib/supermemory";
+import { captureError, mergeWideEvent } from "../lib/tracing";
 import { validateWebsite } from "../lib/website-utils";
 
 function jsonError(status: number, code: string, message: string): Response {
@@ -56,6 +63,12 @@ const MAX_MESSAGES = 100;
 const MAX_PARTS_PER_MESSAGE = 50;
 const MAX_PROPERTIES_PER_PART = 20;
 
+type AgentExperimentalTelemetry = {
+	isEnabled: true;
+	functionId: string;
+	metadata?: Record<string, string>;
+};
+
 /**
  * Schema uses t.Any() for message parts because UIMessage parts
  * are polymorphic (text, tool, reasoning, etc.) and validated
@@ -87,7 +100,8 @@ const AgentRequestSchema = t.Object({
  * Create a ToolLoopAgent from AgentConfig.
  */
 function createToolLoopAgent(
-	config: AgentConfig
+	config: AgentConfig,
+	experimentalTelemetry?: AgentExperimentalTelemetry
 ): InstanceType<typeof ToolLoopAgent> {
 	return new ToolLoopAgent({
 		model: config.model,
@@ -96,6 +110,7 @@ function createToolLoopAgent(
 		stopWhen: config.stopWhen,
 		temperature: config.temperature,
 		experimental_context: config.experimental_context,
+		experimental_telemetry: experimentalTelemetry,
 	});
 }
 
@@ -123,11 +138,11 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 	.post(
 		"/chat",
 		function agentChat({ body, user, request }) {
-			return record("agentChat", async () => {
+			return (async () => {
 				const chatId = body.id ?? generateId();
 				let organizationId: string | null = null;
 
-				setAttributes({
+				mergeWideEvent({
 					agent_website_id: body.websiteId,
 					agent_user_id: user?.id ?? "unknown",
 					agent_chat_id: chatId,
@@ -184,22 +199,38 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 						user_id: userId,
 					});
 
-					console.log("[Agent] Creating agent", {
-						type: agentType,
-						model,
-						websiteId: body.websiteId,
-						messageCount: body.messages.length,
-						lastMessage: getLastMessagePreview(body.messages),
+					useLogger().info("Creating agent", {
+						agent: {
+							type: agentType,
+							model,
+							websiteId: body.websiteId,
+							messageCount: body.messages.length,
+							lastMessage: getLastMessagePreview(body.messages),
+						},
 					});
 
-					const config = createAgentConfig(agentType, {
-						userId,
-						websiteId: body.websiteId,
-						websiteDomain: domain,
-						timezone,
-						chatId,
-						requestHeaders: request.headers,
-					});
+					const lastMessage = getLastMessagePreview(body.messages);
+
+					const [config, memoryCtx] = await Promise.all([
+						Promise.resolve(
+							createAgentConfig(agentType, {
+								userId,
+								websiteId: body.websiteId,
+								websiteDomain: domain,
+								timezone,
+								chatId,
+								requestHeaders: request.headers,
+							})
+						),
+						isMemoryEnabled() && lastMessage
+							? getMemoryContext(lastMessage, userId, null)
+							: Promise.resolve(null),
+					]);
+
+					const memoryBlock = memoryCtx ? formatMemoryForPrompt(memoryCtx) : "";
+					if (memoryBlock) {
+						config.system = `${config.system}\n\n${memoryBlock}`;
+					}
 
 					const validation = await safeValidateUIMessages({
 						messages: body.messages as UIMessage[],
@@ -228,7 +259,39 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 						emptyMessages: "remove",
 					});
 
-					const agent = createToolLoopAgent(config);
+					const dashboardTelemetryMetadata: Record<string, string> = {
+						source: "dashboard",
+						userId,
+						websiteId: body.websiteId,
+						websiteDomain: domain,
+						chatId,
+						agentType,
+						model,
+						timezone,
+						"tcc.sessionId": chatId,
+						"tcc.conversational": "true",
+					};
+					if (organizationId) {
+						dashboardTelemetryMetadata.organizationId = organizationId;
+					}
+
+					const agent = createToolLoopAgent(config, {
+						isEnabled: true,
+						functionId: `databuddy.dashboard.agent.${agentType}`,
+						metadata: dashboardTelemetryMetadata,
+					});
+
+					if (isMemoryEnabled() && lastMessage) {
+						storeConversation(
+							[{ role: "user", content: lastMessage }],
+							userId,
+							null,
+							{
+								source: "dashboard",
+								websiteId: body.websiteId,
+							}
+						);
+					}
 
 					const result = await agent.stream({
 						messages: modelMessages,
@@ -259,7 +322,7 @@ export const agent = new Elysia({ prefix: "/v1/agent" })
 					});
 					return jsonError(500, "INTERNAL_ERROR", getErrorMessage(error));
 				}
-			});
+			})();
 		},
 		{ body: AgentRequestSchema, idleTimeout: 60_000 }
 	);

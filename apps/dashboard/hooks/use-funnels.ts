@@ -89,6 +89,9 @@ export function useFunnels(
 			queryClient.invalidateQueries({
 				queryKey: orpc.funnels.getAnalyticsByReferrer.key(),
 			}),
+			queryClient.invalidateQueries({
+				queryKey: orpc.funnels.getAnalyticsByLink.key(),
+			}),
 		]);
 
 	const createMutation = useMutation({

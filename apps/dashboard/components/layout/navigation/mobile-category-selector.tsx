@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@databuddy/auth/client";
 import { useFlags } from "@databuddy/sdk/react";
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { usePathname } from "next/navigation";
@@ -11,7 +12,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useWebsites } from "@/hooks/use-websites";
+import { useWebsitesLight } from "@/hooks/use-websites";
 import { cn } from "@/lib/utils";
 import {
 	categoryConfig,
@@ -22,25 +23,20 @@ import {
 	getDefaultCategory,
 } from "./navigation-config";
 
-interface User {
-	name?: string | null;
-	email?: string | null;
-	image?: string | null;
-}
-
 interface MobileCategorySelectorProps {
 	onCategoryChangeAction?: (categoryId: string) => void;
 	selectedCategory?: string;
-	user: User | null;
 }
 
 export function MobileCategorySelector({
 	onCategoryChangeAction,
 	selectedCategory,
-	user,
 }: MobileCategorySelectorProps) {
+	const { data: session } = authClient.useSession();
+	const user = session?.user ?? null;
+
 	const pathname = usePathname();
-	const { websites, isLoading: isLoadingWebsites } = useWebsites({
+	const { websites, isLoading: isLoadingWebsites } = useWebsitesLight({
 		enabled: user !== null,
 	});
 	const { isOn } = useFlags();
@@ -79,11 +75,11 @@ export function MobileCategorySelector({
 	const currentCategory = categories.find((cat) => cat.id === activeCategory);
 
 	return (
-		<div className="border-sidebar-border border-b p-3 md:hidden">
+		<div className="p-3 md:hidden">
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button
-						className="flex h-10 w-full items-center justify-between px-3"
+						className="flex h-10 w-full items-center justify-between border-sidebar-border border-b px-3"
 						type="button"
 						variant="secondary"
 					>

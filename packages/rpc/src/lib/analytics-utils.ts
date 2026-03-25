@@ -28,6 +28,15 @@ export interface StepAnalytics {
 	top_errors: StepErrorInsight[];
 }
 
+export interface FunnelTimeSeriesPoint {
+	date: string;
+	users: number;
+	conversions: number;
+	conversion_rate: number;
+	dropoffs: number;
+	avg_time: number;
+}
+
 export interface FunnelAnalytics {
 	overall_conversion_rate: number;
 	total_users_entered: number;
@@ -37,6 +46,7 @@ export interface FunnelAnalytics {
 	biggest_dropoff_step: number;
 	biggest_dropoff_rate: number;
 	steps_analytics: StepAnalytics[];
+	time_series?: FunnelTimeSeriesPoint[];
 	error_insights: {
 		total_errors: number;
 		sessions_with_errors: number;
@@ -69,15 +79,24 @@ interface Filter {
 	operator: string;
 	value: string | readonly string[];
 }
-interface VisitorStep {
-	step: number;
-	time: number;
-	referrer?: string;
-}
 interface ParsedReferrer {
 	name: string;
 	type: string;
 	domain: string;
+}
+
+interface FunnelAggRow {
+	step_num: number;
+	date: string;
+	users: number;
+	avg_time: number;
+	conversions: number;
+}
+
+interface ReferrerRow {
+	vid: string;
+	referrer: string;
+	max_step: number;
 }
 
 // Helpers
@@ -107,11 +126,21 @@ const formatDuration = (seconds: number): string => {
 	return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-const avg = (arr: number[]): number =>
-	arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
-
 const pct = (num: number, denom: number): number =>
 	denom > 0 ? Math.round((num / denom) * 10_000) / 100 : 0;
+
+/** ClickHouse JSON often returns UInt64 as string; coercing avoids NaN and string concat bugs. */
+function toFiniteNumber(value: unknown, fallback = 0): number {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (typeof value === "bigint") {
+		const n = Number(value);
+		return Number.isFinite(n) ? n : fallback;
+	}
+	const n = Number(value);
+	return Number.isFinite(n) ? n : fallback;
+}
 
 const parseReferrer = (ref: string): ParsedReferrer => {
 	if (!ref || ref === "Direct" || ref.toLowerCase() === "(direct)") {
@@ -294,54 +323,6 @@ const buildStepQuery = (
 		GROUP BY e.vid${includeReferrer ? ", r.vref" : ""}`;
 };
 
-// Process raw results into visitor -> steps map
-const groupByVisitor = (
-	rows: Array<{ step: number; vid: string; ts: number; ref?: string }>
-): Map<string, VisitorStep[]> => {
-	const map = new Map<string, VisitorStep[]>();
-	for (const r of rows) {
-		const existing = map.get(r.vid);
-		const arr = existing ?? [];
-		if (!existing) {
-			map.set(r.vid, arr);
-		}
-		arr.push({ step: r.step, time: r.ts, referrer: r.ref || undefined });
-	}
-	for (const steps of map.values()) {
-		steps.sort((a, b) => a.time - b.time);
-	}
-	return map;
-};
-
-// Count visitors who completed each step in order
-const countStepCompletions = (
-	visitors: Map<string, VisitorStep[]>,
-	filter?: Set<string>
-): Map<number, Set<string>> => {
-	const counts = new Map<number, Set<string>>();
-
-	for (const [vid, steps] of visitors) {
-		if (filter && !filter.has(vid)) {
-			continue;
-		}
-
-		let expected = 1;
-
-		for (const s of steps) {
-			if (s.step === expected) {
-				let set = counts.get(expected);
-				if (!set) {
-					set = new Set();
-					counts.set(expected, set);
-				}
-				set.add(vid);
-				expected += 1;
-			}
-		}
-	}
-	return counts;
-};
-
 interface ErrorRow {
 	path: string;
 	vid: string;
@@ -350,226 +331,342 @@ interface ErrorRow {
 	error_count: number;
 }
 
+const buildStepSubquery = (
+	step: AnalyticsStep,
+	paramKey: string,
+	params: ClickhouseQueryParams
+): string => {
+	params[paramKey] = step.target;
+	if (step.type === "PAGE_VIEW") {
+		return `SELECT DISTINCT anonymous_id FROM analytics.events
+			WHERE client_id = {websiteId:String}
+			AND time >= parseDateTimeBestEffort({startDate:String})
+			AND time <= parseDateTimeBestEffort({endDate:String})
+			AND event_name = 'screen_view'
+			AND path = {${paramKey}:String}`;
+	}
+	return `(SELECT DISTINCT anonymous_id FROM analytics.events
+		WHERE client_id = {websiteId:String}
+		AND time >= parseDateTimeBestEffort({startDate:String})
+		AND time <= parseDateTimeBestEffort({endDate:String})
+		AND event_name = {${paramKey}:String}
+		UNION ALL
+		SELECT DISTINCT COALESCE(anonymous_id, session_id, '') FROM analytics.custom_events
+		WHERE (owner_id = {websiteId:String} OR website_id = {websiteId:String})
+		AND timestamp >= parseDateTimeBestEffort({startDate:String})
+		AND timestamp <= parseDateTimeBestEffort({endDate:String})
+		AND event_name = {${paramKey}:String}
+		AND COALESCE(anonymous_id, session_id, '') != '')`;
+};
+
 const queryFunnelErrors = async (
 	steps: AnalyticsStep[],
-	funnelVids: Set<string>,
+	hasVisitors: boolean,
 	params: ClickhouseQueryParams
 ): Promise<{
 	errorsByPath: Map<string, ErrorRow[]>;
 	sessionsWithErrors: Set<string>;
 	totalErrors: number;
+	dropoffsWithErrors: number;
 }> => {
-	if (funnelVids.size === 0) {
-		return {
-			errorsByPath: new Map(),
-			sessionsWithErrors: new Set(),
-			totalErrors: 0,
-		};
-	}
+	const empty = {
+		errorsByPath: new Map<string, ErrorRow[]>(),
+		sessionsWithErrors: new Set<string>(),
+		totalErrors: 0,
+		dropoffsWithErrors: 0,
+	};
 
 	const firstStep = steps[0];
-	if (!firstStep) {
-		return {
-			errorsByPath: new Map(),
-			sessionsWithErrors: new Set(),
-			totalErrors: 0,
-		};
+	if (!(hasVisitors && firstStep)) {
+		return empty;
 	}
 
-	params.firstStepTarget = firstStep.target;
-
-	const subquery =
-		firstStep.type === "PAGE_VIEW"
-			? `SELECT DISTINCT anonymous_id FROM analytics.events
-			   WHERE client_id = {websiteId:String}
-			   AND time >= parseDateTimeBestEffort({startDate:String})
-			   AND time <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = 'screen_view'
-			   AND path = {firstStepTarget:String}`
-			: `(SELECT DISTINCT anonymous_id FROM analytics.events
-			   WHERE client_id = {websiteId:String}
-			   AND time >= parseDateTimeBestEffort({startDate:String})
-			   AND time <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = {firstStepTarget:String}
-			   UNION ALL
-			   SELECT DISTINCT anonymous_id FROM analytics.custom_events
-			   WHERE (owner_id = {websiteId:String} OR website_id = {websiteId:String})
-			   AND timestamp >= parseDateTimeBestEffort({startDate:String})
-			   AND timestamp <= parseDateTimeBestEffort({endDate:String})
-			   AND event_name = {firstStepTarget:String}
-			   AND anonymous_id IS NOT NULL AND anonymous_id != '')`;
-
-	const errorRows = await chQuery<ErrorRow>(
-		`SELECT 
-			path,
-			anonymous_id as vid,
-			error_type,
-			any(message) as message,
-			count() as error_count
-		FROM analytics.error_spans
-		WHERE client_id = {websiteId:String}
-			AND timestamp >= parseDateTimeBestEffort({startDate:String})
-			AND timestamp <= parseDateTimeBestEffort({endDate:String})
-			AND anonymous_id IN (${subquery})
-		GROUP BY path, anonymous_id, error_type
-		ORDER BY error_count DESC
-		LIMIT 1000`,
+	const firstStepSubquery = buildStepSubquery(
+		firstStep,
+		"firstStepTarget",
 		params
 	);
+
+	const lastStep = steps.at(-1);
+	const hasMultipleSteps = lastStep && steps.length > 1;
+	const lastStepSubquery = hasMultipleSteps
+		? buildStepSubquery(lastStep, "lastStepTarget", params)
+		: null;
+
+	const errorQuery = `SELECT
+		path,
+		anonymous_id as vid,
+		error_type,
+		any(message) as message,
+		count() as error_count
+	FROM analytics.error_spans
+	WHERE client_id = {websiteId:String}
+		AND timestamp >= parseDateTimeBestEffort({startDate:String})
+		AND timestamp <= parseDateTimeBestEffort({endDate:String})
+		AND anonymous_id IN (${firstStepSubquery})
+	GROUP BY path, anonymous_id, error_type
+	ORDER BY error_count DESC
+	LIMIT 1000`;
+
+	const dropoffQuery = lastStepSubquery
+		? `SELECT count(DISTINCT anonymous_id) as count
+		   FROM analytics.error_spans
+		   WHERE client_id = {websiteId:String}
+			AND timestamp >= parseDateTimeBestEffort({startDate:String})
+			AND timestamp <= parseDateTimeBestEffort({endDate:String})
+			AND anonymous_id IN (${firstStepSubquery})
+			AND anonymous_id NOT IN (${lastStepSubquery})`
+		: null;
+
+	const [errorRows, dropoffResult] = await Promise.all([
+		chQuery<ErrorRow>(errorQuery, params),
+		dropoffQuery
+			? chQuery<{ count: number }>(dropoffQuery, params)
+			: Promise.resolve([]),
+	]);
 
 	const errorsByPath = new Map<string, ErrorRow[]>();
 	const sessionsWithErrors = new Set<string>();
 	let totalErrors = 0;
 
 	for (const row of errorRows) {
-		sessionsWithErrors.add(row.vid);
-		totalErrors += row.error_count;
+		const count = toFiniteNumber(row.error_count, 0);
+		const normalized: ErrorRow = {
+			path: String(row.path ?? ""),
+			vid: String(row.vid ?? ""),
+			error_type: String(row.error_type ?? ""),
+			message: String(row.message ?? ""),
+			error_count: count,
+		};
 
-		const existing = errorsByPath.get(row.path);
+		sessionsWithErrors.add(normalized.vid);
+		totalErrors += count;
+
+		const existing = errorsByPath.get(normalized.path);
 		if (existing) {
-			existing.push(row);
+			existing.push(normalized);
 		} else {
-			errorsByPath.set(row.path, [row]);
+			errorsByPath.set(normalized.path, [normalized]);
 		}
 	}
 
-	return { errorsByPath, sessionsWithErrors, totalErrors };
+	const dropoffsWithErrors = toFiniteNumber(dropoffResult[0]?.count, 0);
+
+	return { errorsByPath, sessionsWithErrors, totalErrors, dropoffsWithErrors };
 };
 
-// Main funnel analytics
+export const queryLinkVisitorIds = async (
+	linkId: string,
+	params: ClickhouseQueryParams
+): Promise<Set<string>> => {
+	const refParams = { ...params, linkRefPattern: `%ref=${linkId}%` };
+	const rows = await chQuery<{ vid: string }>(
+		`SELECT DISTINCT anonymous_id as vid
+		 FROM analytics.events
+		 WHERE client_id = {websiteId:String}
+			AND ${buildTimeRangeWhere("time")}
+			AND url LIKE {linkRefPattern:String}`,
+		refParams
+	);
+	return new Set(rows.map((r) => String(r.vid ?? "")));
+};
+
+// Build chained step CTEs + visitor summary for ClickHouse-side funnel computation
+const buildFunnelSQL = (
+	stepQueries: string[],
+	totalSteps: number,
+	opts: {
+		visitorFilterClause?: string;
+		includeReferrer?: boolean;
+	} = {}
+): {
+	cteSql: string;
+	maxStepExpr: string;
+	timeCols: string[];
+	joinClause: string;
+} => {
+	const stepCTEs = [
+		`s1 AS (
+		SELECT vid, MIN(ts) as ts${opts.includeReferrer ? ", any(ref) as ref" : ""}
+		FROM step_events WHERE step = 1${opts.visitorFilterClause ?? ""} GROUP BY vid
+	)`,
+	];
+	for (let i = 2; i <= totalSteps; i++) {
+		stepCTEs.push(`s${i} AS (
+		SELECT se.vid, MIN(se.ts) as ts FROM step_events se
+		INNER JOIN s${i - 1} ON se.vid = s${i - 1}.vid
+		WHERE se.step = ${i} AND se.ts >= s${i - 1}.ts GROUP BY se.vid
+	)`);
+	}
+
+	const joins: string[] = [];
+	const maxStepParts = ["toUInt8(1)"];
+	const timeCols = ["toFloat64(toUnixTimestamp(s1.ts)) as t1"];
+	for (let i = 2; i <= totalSteps; i++) {
+		joins.push(`LEFT JOIN s${i} ON s1.vid = s${i}.vid`);
+		maxStepParts.push(`if(s${i}.vid != '', toUInt8(1), toUInt8(0))`);
+		timeCols.push(`toFloat64(toUnixTimestamp(s${i}.ts)) as t${i}`);
+	}
+
+	const eventsCols = opts.includeReferrer
+		? "SELECT DISTINCT step, vid, ts, ref FROM events"
+		: "SELECT DISTINCT step, vid, ts FROM events";
+
+	const cteSql = `WITH events AS (${stepQueries.join("\nUNION ALL\n")}),
+step_events AS (${eventsCols}),
+${stepCTEs.join(",\n")}`;
+
+	return {
+		cteSql,
+		maxStepExpr: maxStepParts.join(" + "),
+		timeCols,
+		joinClause: joins.join(" "),
+	};
+};
+
+// Aggregate per-step error insights from the error query results
+const buildStepErrorInsights = (
+	errorsByPath: Map<string, ErrorRow[]>,
+	target: string
+): {
+	stepErrorCount: number;
+	usersWithErrors: number;
+	topErrors: StepErrorInsight[];
+} => {
+	const stepErrors = errorsByPath.get(target) ?? [];
+	const stepErrorCount = stepErrors.reduce(
+		(sum, e) => sum + toFiniteNumber(e.error_count, 0),
+		0
+	);
+	const usersWithErrors = new Set(stepErrors.map((e) => e.vid)).size;
+
+	const errorsByType = new Map<
+		string,
+		{ message: string; count: number; type: string }
+	>();
+	for (const e of stepErrors) {
+		const ec = toFiniteNumber(e.error_count, 0);
+		const existing = errorsByType.get(e.error_type);
+		if (existing) {
+			existing.count += ec;
+		} else {
+			errorsByType.set(e.error_type, {
+				message: e.message,
+				count: ec,
+				type: e.error_type,
+			});
+		}
+	}
+
+	const topErrors = [...errorsByType.values()]
+		.sort((a, b) => b.count - a.count)
+		.slice(0, 3)
+		.map((e) => ({
+			message: e.message,
+			error_type: e.type,
+			count: toFiniteNumber(e.count, 0),
+		}));
+
+	return { stepErrorCount, usersWithErrors, topErrors };
+};
+
+// Main funnel analytics — step matching, timing, and aggregation happen in ClickHouse
 export const processFunnelAnalytics = async (
 	steps: AnalyticsStep[],
 	filters: Filter[],
-	params: ClickhouseQueryParams
+	params: ClickhouseQueryParams,
+	visitorFilter?: Set<string>
 ): Promise<FunnelAnalytics> => {
 	const filterSQL = buildFilterSQL(filters, params);
+	const totalSteps = steps.length;
 	const stepQueries = steps.map((s, i) =>
 		buildStepQuery(s, i, filterSQL, params)
 	);
 
-	const rows = await chQuery<{
-		step: number;
-		name: string;
-		vid: string;
-		ts: number;
-	}>(
-		`WITH events AS (${stepQueries.join("\nUNION ALL\n")})
-		 SELECT DISTINCT step, name, vid, ts FROM events ORDER BY vid, ts`,
-		params
+	let visitorFilterClause = "";
+	if (visitorFilter && visitorFilter.size > 0) {
+		params.visitorFilterIds = [...visitorFilter];
+		visitorFilterClause = " AND vid IN {visitorFilterIds:Array(String)}";
+	}
+
+	const { cteSql, maxStepExpr, timeCols, joinClause } = buildFunnelSQL(
+		stepQueries,
+		totalSteps,
+		{ visitorFilterClause }
 	);
 
-	const visitors = groupByVisitor(rows);
-	const counts = countStepCompletions(visitors);
-	const totalSteps = steps.length;
-	const totalUsers = counts.get(1)?.size || 0;
+	// Per-step metrics
+	const stepMetrics = [
+		"SELECT toUInt8(1) as step_num, '' as date, count() as users, toFloat64(0) as avg_time, toUInt64(0) as conversions FROM visitor_summary",
+	];
+	for (let i = 2; i <= totalSteps; i++) {
+		stepMetrics.push(
+			`SELECT toUInt8(${i}), '', countIf(max_step >= ${i}), avgIf(t${i} - t${i - 1}, max_step >= ${i} AND t${i} - t${i - 1} < 86400), toUInt64(0) FROM visitor_summary`
+		);
+	}
 
-	// Get all visitor IDs in the funnel
-	const allFunnelVids = new Set(visitors.keys());
+	// Overall avg completion time (sentinel row)
+	const sentinelStep = totalSteps + 1;
+	stepMetrics.push(
+		`SELECT toUInt8(${sentinelStep}), '', toUInt64(0), avgIf(t${totalSteps} - t1, max_step >= ${totalSteps} AND t${totalSteps} - t1 < 86400), toUInt64(0) FROM visitor_summary`
+	);
 
-	// Query errors for funnel sessions
-	const { errorsByPath, sessionsWithErrors, totalErrors } =
-		await queryFunnelErrors(steps, allFunnelVids, params);
+	// Time series bucketed by step-1 entry date
+	const tsQuery = `SELECT toUInt8(0), toString(entry_date), count(), avgIf(t${totalSteps} - t1, max_step >= ${totalSteps} AND t${totalSteps} - t1 < 86400), countIf(max_step >= ${totalSteps}) FROM visitor_summary GROUP BY entry_date`;
 
-	// Calculate step timings and track drop-offs per step
-	const completionTimes: number[] = [];
-	const stepTimes = new Map<number, number[]>();
-	const dropoffsByStep = new Map<number, Set<string>>();
+	const fullQuery = `${cteSql},
+visitor_summary AS (
+	SELECT s1.vid, toDate(s1.ts) as entry_date,
+		${maxStepExpr} as max_step,
+		${timeCols.join(", ")}
+	FROM s1 ${joinClause}
+)
+${stepMetrics.join("\nUNION ALL\n")}
+UNION ALL
+${tsQuery}
+ORDER BY 1, 2`;
 
-	for (const [vid, stepList] of visitors) {
-		let expected = 1;
-		let firstTime = 0;
-		let prevTime = 0;
-		let lastCompletedStep = 0;
+	const [aggRows, errorData] = await Promise.all([
+		chQuery<FunnelAggRow>(fullQuery, params),
+		queryFunnelErrors(steps, true, params),
+	]);
 
-		for (const s of stepList) {
-			if (s.step === expected) {
-				if (expected === 1) {
-					firstTime = prevTime = s.time;
-				} else {
-					let arr = stepTimes.get(expected);
-					if (!arr) {
-						arr = [];
-						stepTimes.set(expected, arr);
-					}
-					arr.push(s.time - prevTime);
-					prevTime = s.time;
-				}
-				if (expected === totalSteps) {
-					completionTimes.push(s.time - firstTime);
-				}
-				lastCompletedStep = expected;
-				expected += 1;
-			}
-		}
+	const stepRows: FunnelAggRow[] = [];
+	const tsRows: FunnelAggRow[] = [];
+	let avgCompletionTime = 0;
 
-		// Track which step they dropped off at
-		if (lastCompletedStep > 0 && lastCompletedStep < totalSteps) {
-			const dropStep = lastCompletedStep + 1;
-			let set = dropoffsByStep.get(dropStep);
-			if (!set) {
-				set = new Set();
-				dropoffsByStep.set(dropStep, set);
-			}
-			set.add(vid);
+	for (const row of aggRows) {
+		const sn = toFiniteNumber(row.step_num, 0);
+		if (sn === sentinelStep) {
+			avgCompletionTime = Math.round(toFiniteNumber(row.avg_time, 0));
+		} else if (sn > 0) {
+			stepRows.push({ ...row, step_num: sn });
+		} else {
+			tsRows.push(row);
 		}
 	}
 
-	// Calculate drop-offs with errors (correlation)
-	let dropoffsWithErrors = 0;
-	let totalDropoffs = 0;
+	stepRows.sort((a, b) => a.step_num - b.step_num);
 
-	for (const [, dropVids] of dropoffsByStep) {
-		for (const vid of dropVids) {
-			totalDropoffs++;
-			if (sessionsWithErrors.has(vid)) {
-				dropoffsWithErrors++;
-			}
-		}
-	}
+	const totalUsers = toFiniteNumber(stepRows[0]?.users, 0);
+	const completedUsers = toFiniteNumber(stepRows.at(-1)?.users, 0);
+	const totalDropoffs = totalUsers - completedUsers;
 
-	const avgTime = avg(completionTimes);
+	const { errorsByPath, totalErrors, sessionsWithErrors, dropoffsWithErrors } =
+		errorData;
 
-	// Build step analytics with error insights
 	const stepsAnalytics: StepAnalytics[] = steps.map((s, i) => {
 		const stepNum = i + 1;
-		const users = counts.get(stepNum)?.size || 0;
-		const prev = i > 0 ? counts.get(i)?.size || 0 : users;
+		const row = stepRows.find((r) => r.step_num === stepNum);
+		const users = toFiniteNumber(row?.users, 0);
+		const prev =
+			i > 0
+				? toFiniteNumber(stepRows.find((r) => r.step_num === i)?.users, 0)
+				: users;
 		const drops = i > 0 ? prev - users : 0;
 
-		// Get errors for this step's path
-		const stepErrors = errorsByPath.get(s.target) ?? [];
-		const stepErrorCount = stepErrors.reduce(
-			(sum, e) => sum + e.error_count,
-			0
-		);
-		const usersWithErrors = new Set(stepErrors.map((e) => e.vid)).size;
-
-		// Aggregate top errors by type
-		const errorsByType = new Map<
-			string,
-			{ message: string; count: number; type: string }
-		>();
-		for (const e of stepErrors) {
-			const existing = errorsByType.get(e.error_type);
-			if (existing) {
-				existing.count += e.error_count;
-			} else {
-				errorsByType.set(e.error_type, {
-					message: e.message,
-					count: e.error_count,
-					type: e.error_type,
-				});
-			}
-		}
-
-		const topErrors = [...errorsByType.values()]
-			.sort((a, b) => b.count - a.count)
-			.slice(0, 3)
-			.map((e) => ({
-				message: e.message,
-				error_type: e.type,
-				count: e.count,
-			}));
+		const { stepErrorCount, usersWithErrors, topErrors } =
+			buildStepErrorInsights(errorsByPath, s.target);
 
 		return {
 			step_number: stepNum,
@@ -579,14 +676,13 @@ export const processFunnelAnalytics = async (
 			conversion_rate: i > 0 ? pct(users, prev) : 100,
 			dropoffs: drops,
 			dropoff_rate: i > 0 ? pct(drops, prev) : 0,
-			avg_time_to_complete: avg(stepTimes.get(stepNum) ?? []),
+			avg_time_to_complete: Math.round(toFiniteNumber(row?.avg_time, 0)),
 			error_count: stepErrorCount,
 			error_rate: pct(usersWithErrors, users),
 			top_errors: topErrors,
 		};
 	});
 
-	const lastStep = stepsAnalytics.at(-1);
 	const biggestDropoff =
 		stepsAnalytics.length > 1
 			? stepsAnalytics
@@ -594,15 +690,31 @@ export const processFunnelAnalytics = async (
 					.reduce((max, s) => (s.dropoff_rate > max.dropoff_rate ? s : max))
 			: stepsAnalytics[0];
 
+	const timeSeries: FunnelTimeSeriesPoint[] = tsRows
+		.sort((a, b) => String(a.date).localeCompare(String(b.date)))
+		.map((row) => {
+			const users = toFiniteNumber(row.users, 0);
+			const conversions = toFiniteNumber(row.conversions, 0);
+			return {
+				date: String(row.date),
+				users,
+				conversions,
+				conversion_rate: pct(conversions, users),
+				dropoffs: users - conversions,
+				avg_time: Math.round(toFiniteNumber(row.avg_time, 0)),
+			};
+		});
+
 	return {
-		overall_conversion_rate: pct(lastStep?.users || 0, totalUsers),
+		overall_conversion_rate: pct(completedUsers, totalUsers),
 		total_users_entered: totalUsers,
-		total_users_completed: lastStep?.users || 0,
-		avg_completion_time: avgTime,
-		avg_completion_time_formatted: formatDuration(avgTime),
+		total_users_completed: completedUsers,
+		avg_completion_time: avgCompletionTime,
+		avg_completion_time_formatted: formatDuration(avgCompletionTime),
 		biggest_dropoff_step: biggestDropoff?.step_number || 1,
 		biggest_dropoff_rate: biggestDropoff?.dropoff_rate || 0,
 		steps_analytics: stepsAnalytics,
+		time_series: timeSeries.length > 0 ? timeSeries : undefined,
 		error_insights: {
 			total_errors: totalErrors,
 			sessions_with_errors: sessionsWithErrors.size,
@@ -631,41 +743,13 @@ export const processGoalAnalytics = async (
 	const goalVids = new Set(rows.map((r) => r.vid));
 	const completions = goalVids.size;
 
-	// Query errors for goal sessions
 	const { errorsByPath, sessionsWithErrors, totalErrors } =
-		await queryFunnelErrors(steps, goalVids, params);
+		await queryFunnelErrors(steps, goalVids.size > 0, params);
 
-	// Get errors for this goal's path
-	const stepErrors = errorsByPath.get(step.target) ?? [];
-	const stepErrorCount = stepErrors.reduce((sum, e) => sum + e.error_count, 0);
-	const usersWithErrors = new Set(stepErrors.map((e) => e.vid)).size;
-
-	// Aggregate top errors by type
-	const errorsByType = new Map<
-		string,
-		{ message: string; count: number; type: string }
-	>();
-	for (const e of stepErrors) {
-		const existing = errorsByType.get(e.error_type);
-		if (existing) {
-			existing.count += e.error_count;
-		} else {
-			errorsByType.set(e.error_type, {
-				message: e.message,
-				count: e.error_count,
-				type: e.error_type,
-			});
-		}
-	}
-
-	const topErrors = [...errorsByType.values()]
-		.sort((a, b) => b.count - a.count)
-		.slice(0, 3)
-		.map((e) => ({
-			message: e.message,
-			error_type: e.type,
-			count: e.count,
-		}));
+	const { stepErrorCount, usersWithErrors, topErrors } = buildStepErrorInsights(
+		errorsByPath,
+		step.target
+	);
 
 	return {
 		overall_conversion_rate: pct(completions, totalWebsiteUsers),
@@ -699,73 +783,64 @@ export const processGoalAnalytics = async (
 	};
 };
 
-// Referrer analytics
+// Referrer analytics — step matching in ClickHouse, referrer grouping in JS
 export const processFunnelAnalyticsByReferrer = async (
 	steps: AnalyticsStep[],
 	filters: Filter[],
 	params: ClickhouseQueryParams
 ): Promise<{ referrer_analytics: ReferrerAnalytics[] }> => {
 	const filterSQL = buildFilterSQL(filters, params);
+	const totalSteps = steps.length;
 	const stepQueries = steps.map((s, i) =>
 		buildStepQuery(s, i, filterSQL, params, true)
 	);
 
-	const rows = await chQuery<{
-		step: number;
-		vid: string;
-		ts: number;
-		ref: string;
-	}>(
-		`WITH events AS (${stepQueries.join("\nUNION ALL\n")})
-		 SELECT DISTINCT step, vid, ts, ref FROM events ORDER BY vid, ts`,
-		params
+	const { cteSql, maxStepExpr, joinClause } = buildFunnelSQL(
+		stepQueries,
+		totalSteps,
+		{ includeReferrer: true }
 	);
 
-	const visitors = groupByVisitor(rows);
-	const totalSteps = steps.length;
+	const fullQuery = `${cteSql}
+SELECT s1.vid, s1.ref as referrer,
+	${maxStepExpr} as max_step
+FROM s1 ${joinClause}`;
 
-	// Group visitors by referrer
+	const rows = await chQuery<ReferrerRow>(fullQuery, params);
+
 	const groups = new Map<
 		string,
-		{ parsed: ReturnType<typeof parseReferrer>; vids: Set<string> }
+		{ parsed: ParsedReferrer; total: number; completed: number }
 	>();
 
-	for (const [vid, stepList] of visitors) {
-		if (stepList.length === 0) {
-			continue;
-		}
-
-		const ref = stepList[0].referrer || "Direct";
+	for (const row of rows) {
+		const ref = String(row.referrer ?? "") || "Direct";
 		const parsed = parseReferrer(ref);
 		const key = parsed.domain || "direct";
+		const maxStep = toFiniteNumber(row.max_step, 0);
 
 		let group = groups.get(key);
 		if (!group) {
-			group = { parsed, vids: new Set() };
+			group = { parsed, total: 0, completed: 0 };
 			groups.set(key, group);
 		}
-		group.vids.add(vid);
+		group.total++;
+		if (maxStep >= totalSteps) {
+			group.completed++;
+		}
 	}
 
-	// Calculate per-referrer conversions
 	const analytics: ReferrerAnalytics[] = [];
-
-	for (const [key, { parsed, vids }] of groups) {
-		const counts = countStepCompletions(visitors, vids);
-		const total = counts.get(1)?.size || 0;
-		const completed = counts.get(totalSteps)?.size || 0;
-		const rate = pct(completed, total);
-
+	for (const [key, { parsed, total, completed }] of groups) {
 		if (total <= 1) {
 			continue;
 		}
-
 		analytics.push({
 			referrer: key,
 			referrer_parsed: parsed,
 			total_users: total,
 			completed_users: completed,
-			conversion_rate: rate,
+			conversion_rate: pct(completed, total),
 		});
 	}
 

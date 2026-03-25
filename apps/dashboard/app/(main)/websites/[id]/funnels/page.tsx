@@ -173,55 +173,57 @@ export default function FunnelsPage() {
 					subtitle={
 						isLoading
 							? undefined
-							: `${funnels.length} funnel${funnels.length !== 1 ? "s" : ""}`
+							: `${funnels.length} funnel${funnels.length === 1 ? "" : "s"}`
 					}
 					title="Conversion Funnels"
 					websiteId={websiteId}
 				/>
 
-				{isLoading ? (
-					<FunnelsListSkeleton />
-				) : (
-					<FunnelsList
-						analyticsMap={analyticsMap}
-						expandedFunnelId={expandedId}
-						funnels={funnels ?? []}
-						loadingAnalyticsIds={loadingIds}
-						onCreateFunnel={() => setEditing("new")}
-						onDeleteFunnel={setDeletingId}
-						onEditFunnel={(funnel) => setEditing(funnel)}
-						onToggleFunnel={(funnelId) => {
-							setExpandedId(expandedId === funnelId ? null : funnelId);
-							setSelectedReferrer("all");
-						}}
-					>
-						{(funnel) => {
-							if (expandedId !== funnel.id) {
-								return null;
-							}
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
+					{isLoading ? (
+						<FunnelsListSkeleton />
+					) : (
+						<FunnelsList
+							analyticsMap={analyticsMap}
+							expandedFunnelId={expandedId}
+							funnels={funnels ?? []}
+							loadingAnalyticsIds={loadingIds}
+							onCreateFunnel={() => setEditing("new")}
+							onDeleteFunnel={setDeletingId}
+							onEditFunnel={(funnel) => setEditing(funnel)}
+							onToggleFunnel={(funnelId) => {
+								setExpandedId(expandedId === funnelId ? null : funnelId);
+								setSelectedReferrer("all");
+							}}
+						>
+							{(funnel) => {
+								if (expandedId !== funnel.id) {
+									return null;
+								}
 
-							return (
-								<div className="space-y-4">
-									<FunnelAnalyticsByReferrer
-										data={referrerData}
-										error={referrerError}
-										isLoading={referrerLoading}
-										onReferrerChange={setSelectedReferrer}
-									/>
+								return (
+									<div className="space-y-4">
+										<FunnelAnalyticsByReferrer
+											data={referrerData}
+											error={referrerError}
+											isLoading={referrerLoading}
+											onReferrerChange={setSelectedReferrer}
+										/>
 
-									<FunnelAnalytics
-										data={analyticsData}
-										error={analyticsError as Error | null}
-										isLoading={analyticsLoading}
-										onRetry={refetchAnalytics}
-										referrerAnalytics={referrerData?.referrer_analytics}
-										selectedReferrer={selectedReferrer}
-									/>
-								</div>
-							);
-						}}
-					</FunnelsList>
-				)}
+										<FunnelAnalytics
+											data={analyticsData}
+											error={analyticsError as Error | null}
+											isLoading={analyticsLoading}
+											onRetry={refetchAnalytics}
+											referrerAnalytics={referrerData?.referrer_analytics}
+											selectedReferrer={selectedReferrer}
+										/>
+									</div>
+								);
+							}}
+						</FunnelsList>
+					)}
+				</div>
 
 				{editing !== null && (
 					<EditFunnelDialog

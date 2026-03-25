@@ -84,6 +84,16 @@ async function getLinkBySlug(slug: string): Promise<CachedLink | null> {
 	return link;
 }
 
+function appendRefParam(targetUrl: string, linkId: string): string {
+	try {
+		const url = new URL(targetUrl);
+		url.searchParams.set("ref", linkId);
+		return url.toString();
+	} catch {
+		return targetUrl;
+	}
+}
+
 async function recordClick(
 	link: CachedLink,
 	ipHash: string,
@@ -177,8 +187,9 @@ export const redirectRoute = new Elysia().get(
 			return redirect(targetUrl, 302);
 		}
 
-		// ETag validation for regular users
-		const etag = generateETag(link, targetUrl);
+		const attributedUrl = appendRefParam(targetUrl, link.id);
+
+		const etag = generateETag(link, attributedUrl);
 		if (request.headers.get("if-none-match") === etag) {
 			setAttributes({ redirect_result: "not_modified" });
 			set.status = 304;
@@ -201,7 +212,7 @@ export const redirectRoute = new Elysia().get(
 			"Cache-Control": "private, no-cache",
 			ETag: etag,
 		};
-		return redirect(targetUrl, 302);
+		return redirect(attributedUrl, 302);
 	},
 	{ params: t.Object({ slug: t.String() }) }
 );

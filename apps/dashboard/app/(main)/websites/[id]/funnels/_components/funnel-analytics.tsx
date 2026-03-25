@@ -12,7 +12,6 @@ import {
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
 import { StatCard } from "@/components/analytics/stat-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +36,11 @@ function createChartData(
 	}));
 }
 
+function safePercent(value: number | undefined | null): string {
+	const safe = value == null || Number.isNaN(value) ? 0 : value;
+	return `${safe.toFixed(1)}%`;
+}
+
 interface FunnelAnalyticsProps {
 	isLoading: boolean;
 	error: Error | null;
@@ -44,6 +48,7 @@ interface FunnelAnalyticsProps {
 	onRetry: () => void;
 	selectedReferrer?: string;
 	referrerAnalytics?: FunnelAnalyticsByReferrerResult[];
+	headerAction?: React.ReactNode;
 }
 
 function AnalyticsSkeleton() {
@@ -84,23 +89,23 @@ export function FunnelAnalytics({
 	onRetry,
 	selectedReferrer,
 	referrerAnalytics,
+	headerAction,
 }: FunnelAnalyticsProps) {
 	const { id: websiteId } = useParams<{ id: string }>();
 	const { chartType, chartStepType } = useChartPreferences("funnels");
-	const selectedReferrerData = useMemo(() => {
+	const selectedReferrerData = (() => {
 		if (!selectedReferrer || selectedReferrer === "all" || !referrerAnalytics) {
 			return null;
 		}
-
-		const referrer = referrerAnalytics.find(
-			(r) =>
-				r.referrer === selectedReferrer ||
-				(selectedReferrer === "direct" &&
-					(r.referrer === "direct" || r.referrer === ""))
+		return (
+			referrerAnalytics.find(
+				(r) =>
+					r.referrer === selectedReferrer ||
+					(selectedReferrer === "direct" &&
+						(r.referrer === "direct" || r.referrer === ""))
+			) ?? null
 		);
-
-		return referrer ?? null;
-	}, [selectedReferrer, referrerAnalytics]);
+	})();
 
 	const displayData = selectedReferrerData
 		? {
@@ -132,6 +137,19 @@ export function FunnelAnalytics({
 					})) ?? [],
 			}
 		: data;
+
+	const timeSeries = data?.time_series;
+	const usersChartData = createChartData(timeSeries, "users");
+	const conversionChartData = createChartData(timeSeries, "conversion_rate");
+	const dropoffChartData = createChartData(timeSeries, "dropoffs");
+	const avgTimeChartData = createChartData(timeSeries, "avg_time");
+	const hasChartData = usersChartData.length > 0;
+
+	const errorInsights = data?.error_insights;
+	const hasErrorCorrelation =
+		errorInsights &&
+		errorInsights.dropoffs_with_errors > 0 &&
+		errorInsights.error_correlation_rate > 0;
 
 	if (isLoading) {
 		return <AnalyticsSkeleton />;
@@ -175,23 +193,12 @@ export function FunnelAnalytics({
 		return null;
 	}
 
-	const timeSeries = data?.time_series;
-	const usersChartData = createChartData(timeSeries, "users");
-	const conversionChartData = createChartData(timeSeries, "conversion_rate");
-	const dropoffChartData = createChartData(timeSeries, "dropoffs");
-	const avgTimeChartData = createChartData(timeSeries, "avg_time");
-
-	const hasChartData = usersChartData.length > 1;
-
-	const errorInsights = data?.error_insights;
-	const hasErrorCorrelation =
-		errorInsights &&
-		errorInsights.dropoffs_with_errors > 0 &&
-		errorInsights.error_correlation_rate > 0;
-
 	return (
 		<div className="space-y-6">
-			{/* Stats Grid */}
+			{headerAction && (
+				<div className="flex items-center justify-end">{headerAction}</div>
+			)}
+
 			<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 				<StatCard
 					chartData={usersChartData}
@@ -206,14 +213,11 @@ export function FunnelAnalytics({
 					chartData={conversionChartData}
 					chartStepType={chartStepType}
 					chartType={chartType}
-					formatChartValue={(v) => {
-						const safeValue = v == null || Number.isNaN(v) ? 0 : v;
-						return `${safeValue.toFixed(1)}%`;
-					}}
+					formatChartValue={(v) => safePercent(v)}
 					icon={TargetIcon}
 					showChart={hasChartData}
 					title="Conversion"
-					value={`${(displayData.overall_conversion_rate == null || Number.isNaN(displayData.overall_conversion_rate) ? 0 : displayData.overall_conversion_rate).toFixed(1)}%`}
+					value={safePercent(displayData.overall_conversion_rate)}
 				/>
 				<StatCard
 					chartData={dropoffChartData}
@@ -223,7 +227,7 @@ export function FunnelAnalytics({
 					invertTrend
 					showChart={hasChartData}
 					title="Drop-off"
-					value={`${(displayData.biggest_dropoff_rate == null || Number.isNaN(displayData.biggest_dropoff_rate) ? 0 : displayData.biggest_dropoff_rate).toFixed(1)}%`}
+					value={safePercent(displayData.biggest_dropoff_rate)}
 				/>
 				<StatCard
 					chartData={avgTimeChartData}
@@ -239,7 +243,6 @@ export function FunnelAnalytics({
 				/>
 			</div>
 
-			{/* Error Insights Banner */}
 			{hasErrorCorrelation && (
 				<div className="amber-angled-rectangle-gradient flex items-center gap-3 rounded border border-warning/20 bg-warning/5 p-3">
 					<div className="flex size-8 shrink-0 items-center justify-center rounded bg-warning/10">
@@ -247,12 +250,8 @@ export function FunnelAnalytics({
 					</div>
 					<div className="min-w-0 flex-1">
 						<p className="font-medium text-foreground text-sm">
-							{(errorInsights.error_correlation_rate == null ||
-							Number.isNaN(errorInsights.error_correlation_rate)
-								? 0
-								: errorInsights.error_correlation_rate
-							).toFixed(0)}
-							% of drop-offs had errors
+							{safePercent(errorInsights.error_correlation_rate)} of drop-offs
+							had errors
 						</p>
 						<p className="text-muted-foreground text-xs">
 							{errorInsights.dropoffs_with_errors} of{" "}

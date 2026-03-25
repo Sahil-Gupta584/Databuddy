@@ -128,7 +128,7 @@ export default function AmbassadorRewards() {
 					Ambassador Rewards
 				</h2>
 				<p className="mx-auto max-w-2xl text-muted-foreground text-sm sm:text-base lg:text-lg">
-					Join our program and unlock exclusive benefits, early access, and
+					Join our program and unlock exclusive benefits, insider previews, and
 					revenue opportunities
 				</p>
 			</div>
