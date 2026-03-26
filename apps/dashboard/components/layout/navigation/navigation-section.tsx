@@ -3,11 +3,12 @@ import { FEATURE_METADATA } from "@databuddy/shared/types/features";
 import { CaretDownIcon } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { usePathname } from "next/navigation";
-import { memo, useMemo } from "react";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import { memo } from "react";
 import { useBillingContext } from "@/components/providers/billing-provider";
 import type { useAccordionStates } from "@/hooks/use-persistent-state";
 import { NavigationItem } from "./navigation-item";
+import { isNavItemActive } from "./nav-item-active";
 import type { NavigationSection as NavigationSectionType } from "./types";
 
 interface FeatureState {
@@ -20,48 +21,19 @@ interface NavigationSectionProps {
 	icon: NavigationSectionType["icon"];
 	items: NavigationSectionType["items"];
 	pathname: string;
+	searchParams: ReadonlyURLSearchParams;
 	currentWebsiteId?: string | null;
 	className?: string;
 	accordionStates: ReturnType<typeof useAccordionStates>;
 	flag?: string;
 }
 
-const buildFullPath = (basePath: string, itemHref: string) =>
-	itemHref === "" ? basePath : `${basePath}${itemHref}`;
-
-const isItemActive = (
-	item: NavigationSectionType["items"][0],
-	pathname: string,
-	searchParams: URLSearchParams | null,
-	currentWebsiteId?: string | null
-): boolean => {
-	if (item.rootLevel) {
-		if (item.href.includes("?")) {
-			const search = searchParams ? `?${searchParams.toString()}` : "";
-			return `${pathname}${search}` === item.href;
-		}
-		return pathname === item.href;
-	}
-
-	const fullPath = (() => {
-		if (pathname.startsWith("/demo")) {
-			return buildFullPath(`/demo/${currentWebsiteId}`, item.href);
-		}
-		return buildFullPath(`/websites/${currentWebsiteId}`, item.href);
-	})();
-
-	if (item.href === "") {
-		return pathname === fullPath;
-	}
-
-	return pathname === fullPath || pathname.startsWith(`${fullPath}/`);
-};
-
 export const NavigationSection = memo(function NavigationSectionComponent({
 	title,
 	icon: Icon,
 	items,
 	pathname,
+	searchParams,
 	currentWebsiteId,
 	accordionStates,
 	className,
@@ -69,16 +41,8 @@ export const NavigationSection = memo(function NavigationSectionComponent({
 }: NavigationSectionProps) {
 	const { getAccordionState, toggleAccordion } = accordionStates;
 	const isExpanded = getAccordionState(title, true);
-	const currentPathname = usePathname();
 	const { isFeatureEnabled, isLoading } = useBillingContext();
 	const { isOn } = useFlags();
-
-	const searchParams = useMemo(() => {
-		if (typeof window === "undefined") {
-			return null;
-		}
-		return new URLSearchParams(window.location.search);
-	}, [currentPathname]);
 
 	if (flag && !isOn(flag)) {
 		return null;
@@ -173,7 +137,7 @@ export const NavigationSection = memo(function NavigationSectionComponent({
 												domain={item.domain}
 												href={item.href}
 												icon={item.icon}
-												isActive={isItemActive(
+												isActive={isNavItemActive(
 													item,
 													pathname,
 													searchParams,

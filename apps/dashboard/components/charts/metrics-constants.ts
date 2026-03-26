@@ -9,6 +9,7 @@ import {
 	Users,
 	Zap,
 } from "lucide-react";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { formatDuration } from "@/lib/utils";
 
 const createColorSet = (
@@ -213,13 +214,13 @@ const createMetric = (
 
 export const ANALYTICS_METRICS: MetricConfig[] = [
 	createMetric("pageviews", "Pageviews", "pageviews", Eye, (value) =>
-		value.toLocaleString()
+		formatLocaleNumber(value)
 	),
 	createMetric("sessions", "Sessions", "sessions", TrendingUp, (value) =>
-		value.toLocaleString()
+		formatLocaleNumber(value)
 	),
 	createMetric("visitors", "Visitors", "visitors", Users, (value) =>
-		value.toLocaleString()
+		formatLocaleNumber(value)
 	),
 	createMetric(
 		"bounce_rate",
@@ -351,14 +352,14 @@ export const CORE_WEB_VITALS_METRICS: MetricConfig[] = [
 // Error metrics
 export const ERROR_METRICS: MetricConfig[] = [
 	createMetric("total_errors", "Total Errors", "bounce_rate", Bug, (value) =>
-		value.toLocaleString()
+		formatLocaleNumber(value)
 	),
 	createMetric(
 		"affected_users",
 		"Affected Users",
 		"session_duration",
 		Users,
-		(value) => value.toLocaleString()
+		(value) => formatLocaleNumber(value)
 	),
 ];
 

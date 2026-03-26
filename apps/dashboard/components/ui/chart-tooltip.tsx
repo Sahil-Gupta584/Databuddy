@@ -1,5 +1,6 @@
 "use client";
 
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 
 type TooltipEntry = {
@@ -53,7 +54,8 @@ export function ChartTooltip({
 					<p className="text-[10px] text-muted-foreground">{displayLabel}</p>
 				)}
 				<p className="font-semibold text-foreground text-sm tabular-nums">
-					{singleValue.formattedValue ?? singleValue.value.toLocaleString()}
+					{singleValue.formattedValue ??
+						formatLocaleNumber(singleValue.value)}
 					{singleValue.label && (
 						<span className="ml-1 font-normal text-muted-foreground text-xs">
 							{singleValue.label}
@@ -86,7 +88,7 @@ export function ChartTooltip({
 							<span className="text-muted-foreground text-xs">{entry.label}</span>
 						</div>
 						<span className="font-semibold text-foreground text-xs tabular-nums">
-							{entry.formattedValue ?? entry.value.toLocaleString()}
+							{entry.formattedValue ?? formatLocaleNumber(entry.value)}
 						</span>
 					</div>
 				))}

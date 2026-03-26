@@ -28,6 +28,7 @@ import {
 import { createContext, useContext, useState } from "react";
 import { PricingTiersTooltip } from "@/app/(main)/billing/components/pricing-tiers-tooltip";
 import { getStripeMetadata } from "@/app/(main)/billing/utils/stripe-metadata";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import AttachDialog from "@/components/autumn/attach-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -581,9 +582,9 @@ function GatedFeatureItem({
 		}
 		if (typeof limit === "number") {
 			if (unit) {
-				return `Up to ${limit.toLocaleString()} ${unit}`;
+				return `Up to ${formatLocaleNumber(limit)} ${unit}`;
 			}
-			return `Up to ${limit.toLocaleString()}`;
+			return `Up to ${formatLocaleNumber(limit)}`;
 		}
 		return null;
 	};

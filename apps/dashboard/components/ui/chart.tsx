@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 
 import { ChartErrorBoundary } from '@/components/chart-error-boundary';
+import { formatLocaleNumber } from '@/lib/format-locale-number';
 import { cn } from '@/lib/utils';
 
 // Format: { THEME_NAME: CSS_SELECTOR }
@@ -245,7 +246,7 @@ function ChartTooltipContent({
 										</div>
 										{item.value && (
 											<span className="font-medium font-mono text-foreground tabular-nums">
-												{item.value.toLocaleString()}
+												{formatLocaleNumber(item.value)}
 											</span>
 										)}
 									</div>

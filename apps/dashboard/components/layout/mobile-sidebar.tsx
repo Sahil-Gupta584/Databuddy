@@ -11,6 +11,7 @@ import {
 	SunIcon,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -33,6 +34,7 @@ import {
 	getDefaultCategory,
 } from "./navigation/navigation-config";
 import { NavigationItem } from "./navigation/navigation-item";
+import { isNavItemActive } from "./navigation/nav-item-active";
 import { NavigationSection } from "./navigation/navigation-section";
 import type {
 	NavigationEntry,
@@ -45,6 +47,7 @@ interface MobileSidebarProps {
 	header: React.ReactNode;
 	currentWebsiteId?: string | null;
 	accordionStates: ReturnType<typeof useAccordionStates>;
+	searchParams: ReadonlyURLSearchParams;
 	selectedCategory?: string;
 	onCategoryChangeAction: (categoryId: string) => void;
 }
@@ -59,32 +62,6 @@ const isNavigationItem = (
 	entry: NavigationEntry
 ): entry is NavigationItemType => {
 	return "href" in entry && !("items" in entry);
-};
-
-const isItemActive = (
-	item: NavigationItemType,
-	pathname: string,
-	currentWebsiteId?: string | null
-): boolean => {
-	if (item.rootLevel) {
-		return pathname === item.href;
-	}
-
-	const buildFullPath = (basePath: string, itemHref: string) =>
-		itemHref === "" ? basePath : `${basePath}${itemHref}`;
-
-	const fullPath = (() => {
-		if (pathname.startsWith("/demo")) {
-			return buildFullPath(`/demo/${currentWebsiteId}`, item.href);
-		}
-		return buildFullPath(`/websites/${currentWebsiteId}`, item.href);
-	})();
-
-	if (item.href === "") {
-		return pathname === fullPath;
-	}
-
-	return pathname === fullPath || pathname.startsWith(`${fullPath}/`);
 };
 
 function MobileThemeToggle() {
@@ -129,6 +106,7 @@ export function MobileSidebar({
 	header,
 	currentWebsiteId,
 	accordionStates,
+	searchParams,
 	selectedCategory,
 	onCategoryChangeAction,
 }: MobileSidebarProps) {
@@ -317,6 +295,7 @@ export function MobileSidebar({
 											items={entry.items}
 											key={entry.title}
 											pathname={pathname}
+											searchParams={searchParams}
 											title={entry.title}
 										/>
 									);
@@ -336,9 +315,10 @@ export function MobileSidebar({
 												domain={entry.domain}
 												href={entry.href}
 												icon={entry.icon}
-												isActive={isItemActive(
+												isActive={isNavItemActive(
 													entry,
 													pathname,
+													searchParams,
 													currentWebsiteId
 												)}
 												isExternal={entry.external}

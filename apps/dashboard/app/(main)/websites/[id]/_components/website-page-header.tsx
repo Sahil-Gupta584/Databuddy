@@ -26,6 +26,8 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 
 function WebsitePageHeaderSubtitle({
@@ -116,16 +118,21 @@ export function WebsitePageHeader({
 	feature,
 	currentUsage,
 }: WebsitePageHeaderProps) {
-	const { currentPlanId } = useBillingContext();
+	const { currentPlanId, isLoading: isBillingLoading } = useBillingContext();
+	const isHydrated = useHydrated();
 
-	// Calculate usage badge
 	const showUsageBadge =
-		feature && typeof currentUsage === "number" && !isLoading;
-	const limit = showUsageBadge
-		? getPlanFeatureLimit(currentPlanId, feature)
-		: null;
+		Boolean(feature) &&
+		typeof currentUsage === "number" &&
+		!isLoading &&
+		isHydrated &&
+		!isBillingLoading;
+	const limit =
+		showUsageBadge && feature
+			? getPlanFeatureLimit(currentPlanId, feature)
+			: null;
 	const withinLimit =
-		showUsageBadge && onCreateAction
+		showUsageBadge && onCreateAction && feature
 			? isWithinLimit(currentPlanId, feature, currentUsage)
 			: true;
 
@@ -174,7 +181,7 @@ export function WebsitePageHeader({
 							: limit === false
 								? "—"
 								: typeof limit === "number"
-									? limit.toLocaleString()
+									? formatLocaleNumber(limit)
 									: "0"}
 					</Badge>
 				</TooltipTrigger>
@@ -183,8 +190,8 @@ export function WebsitePageHeader({
 						<p>Unlimited on your current plan</p>
 					) : withinLimit && typeof limit === "number" ? (
 						<p className="max-w-xs">
-							You've created {currentUsage} out of {limit.toLocaleString()}{" "}
-							available on your current plan.
+							You've created {currentUsage} out of{" "}
+							{formatLocaleNumber(limit)} available on your current plan.
 							{currentUsage / limit >= 0.8 && (
 								<>
 									<br />
@@ -199,7 +206,9 @@ export function WebsitePageHeader({
 							<span className="font-semibold text-red-600">Limit reached!</span>
 							<br />
 							You've used all{" "}
-							{typeof limit === "number" ? limit.toLocaleString() : "available"}{" "}
+							{typeof limit === "number"
+								? formatLocaleNumber(limit)
+								: "available"}{" "}
 							slots.
 							<br />
 							<Link className="underline" href="/billing">
@@ -369,7 +378,7 @@ export function WebsitePageHeader({
 										<p>
 											You've reached your limit of{" "}
 											{typeof limit === "number"
-												? limit.toLocaleString()
+												? formatLocaleNumber(limit)
 												: "available"}
 											.
 											<br />

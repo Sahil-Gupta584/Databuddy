@@ -6,6 +6,7 @@ import {
 	HoverCardContent,
 	HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 
 interface PricingTier {
@@ -40,7 +41,7 @@ export function PricingTiersTooltip({
 			if (num >= 1000) {
 				return `${(num / 1000).toFixed(num % 1000 === 0 ? 0 : 1)}K`;
 			}
-			return num.toLocaleString();
+			return formatLocaleNumber(num);
 		};
 
 		if (to === "inf") {

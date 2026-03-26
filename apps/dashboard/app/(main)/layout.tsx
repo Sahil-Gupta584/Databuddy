@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AutumnProvider } from "autumn-js/react";
 import { FeedbackPrompt } from "@/components/feedback-prompt";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -18,7 +19,9 @@ export default function MainLayout({
 			<BillingProvider>
 				<CommandSearchProvider>
 					<div className="h-dvh overflow-hidden text-foreground">
-						<Sidebar />
+						<Suspense fallback={null}>
+							<Sidebar />
+						</Suspense>
 						<div className="relative h-dvh pl-0 md:pl-76 lg:pl-84">
 							<div className="h-dvh overflow-y-auto overflow-x-hidden overscroll-none pt-12 md:pt-0">
 								{children}

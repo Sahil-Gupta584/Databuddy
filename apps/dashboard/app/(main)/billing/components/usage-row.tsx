@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { memo } from "react";
 import { Badge } from "@/components/ui/badge";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 import {
 	type FeatureUsage,
@@ -270,7 +271,7 @@ function BilledOverageRow({
 						</span>
 					</div>
 					<span className="font-medium font-mono tabular-nums">
-						{totalUsed.toLocaleString()} total
+						{formatLocaleNumber(totalUsed)} total
 					</span>
 				</div>
 			</div>

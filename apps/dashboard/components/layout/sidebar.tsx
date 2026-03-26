@@ -2,7 +2,7 @@
 
 import { authClient } from "@databuddy/auth/client";
 import { useFlags } from "@databuddy/sdk/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAccordionStates } from "@/hooks/use-persistent-state";
@@ -24,6 +24,7 @@ import type {
 	NavigationItem as NavigationItemType,
 	NavigationSection as NavigationSectionType,
 } from "./navigation/types";
+import { isNavItemActive } from "./navigation/nav-item-active";
 import { WebsiteHeader } from "./navigation/website-header";
 import { OrganizationSelector } from "./organization-selector";
 
@@ -45,37 +46,12 @@ const isNavigationItem = (
 	return "href" in entry && !("items" in entry);
 };
 
-const isItemActive = (
-	item: NavigationItemType,
-	pathname: string,
-	currentWebsiteId?: string | null
-): boolean => {
-	if (item.rootLevel) {
-		return pathname === item.href;
-	}
-
-	const buildFullPath = (basePath: string, itemHref: string) =>
-		itemHref === "" ? basePath : `${basePath}${itemHref}`;
-
-	const fullPath = (() => {
-		if (pathname.startsWith("/demo")) {
-			return buildFullPath(`/demo/${currentWebsiteId}`, item.href);
-		}
-		return buildFullPath(`/websites/${currentWebsiteId}`, item.href);
-	})();
-
-	if (item.href === "") {
-		return pathname === fullPath;
-	}
-
-	return pathname === fullPath || pathname.startsWith(`${fullPath}/`);
-};
-
 export function Sidebar() {
 	const { data: session } = authClient.useSession();
 	const user = session?.user ?? null;
 
 	const pathname = usePathname();
+	const searchParams = useSearchParams();
 	const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
 		undefined
 	);
@@ -208,6 +184,7 @@ export function Sidebar() {
 				header={header}
 				navigation={navigation}
 				onCategoryChangeAction={setSelectedCategory}
+				searchParams={searchParams}
 				selectedCategory={selectedCategory}
 			/>
 
@@ -244,6 +221,7 @@ export function Sidebar() {
 											items={entry.items}
 											key={entry.title}
 											pathname={pathname}
+											searchParams={searchParams}
 											title={entry.title}
 										/>
 									);
@@ -263,9 +241,10 @@ export function Sidebar() {
 												domain={entry.domain}
 												href={entry.href}
 												icon={entry.icon}
-												isActive={isItemActive(
+												isActive={isNavItemActive(
 													entry,
 													pathname,
+													searchParams,
 													currentWebsiteId
 												)}
 												isExternal={entry.external}

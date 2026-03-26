@@ -29,6 +29,7 @@ import {
 } from "@/lib/annotation-constants";
 import { isSingleDayAnnotation } from "@/lib/annotation-utils";
 import dayjs from "@/lib/dayjs";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 import {
 	metricVisibilityAtom,
@@ -92,7 +93,7 @@ const CustomTooltip = ({
 
 					const value = metric.formatValue
 						? metric.formatValue(entry.value, entry.payload as ChartDataRow)
-						: entry.value.toLocaleString();
+						: formatLocaleNumber(entry.value);
 
 					return (
 						<div

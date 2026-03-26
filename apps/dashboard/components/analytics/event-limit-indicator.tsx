@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { orpc } from "@/lib/orpc";
 
 export function EventLimitIndicator() {
@@ -44,7 +45,7 @@ export function EventLimitIndicator() {
 					/>
 					<div>
 						<span className="font-medium text-red-600 dark:text-red-400">
-							{overage.toLocaleString()} events over limit
+							{formatLocaleNumber(overage)} events over limit
 						</span>
 					</div>
 				</div>
@@ -87,7 +88,7 @@ export function EventLimitIndicator() {
 				/>
 				<div className="text-muted-foreground">
 					<span>
-						{remaining.toLocaleString()} events remaining
+						{formatLocaleNumber(remaining)} events remaining
 						<span
 							className={`ml-2 font-medium ${isDestructive ? "text-red-600" : "text-amber-600"}`}
 						>

@@ -1,5 +1,6 @@
 import type { CustomerFeature } from "autumn-js";
 import dayjs from "@/lib/dayjs";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 
 export interface PricingTier {
 	to: number | "inf";
@@ -110,7 +111,7 @@ export function formatCompactNumber(num: number): string {
 	if (num >= 10_000) {
 		return `${(num / 1000).toFixed(0)}K`;
 	}
-	return num.toLocaleString();
+	return formatLocaleNumber(num);
 }
 
 const INTERVAL_LABELS: Record<string, string> = {
