@@ -12,6 +12,7 @@ export interface Monitor {
 	granularity: string;
 	cron: string;
 	isPaused: boolean;
+	isPublic: boolean;
 	createdAt: Date | string;
 	updatedAt: Date | string;
 	website: {

@@ -834,6 +834,7 @@ export const uptimeSchedules = pgTable(
 		granularity: text("granularity").notNull(),
 		cron: text().notNull(),
 		isPaused: boolean("is_paused").default(false).notNull(),
+		isPublic: boolean("is_public").default(false).notNull(),
 		timeout: integer(),
 		cacheBust: boolean("cache_bust").default(false).notNull(),
 		jsonParsingConfig: jsonb("json_parsing_config"),

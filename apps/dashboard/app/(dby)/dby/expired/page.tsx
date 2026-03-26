@@ -1,7 +1,7 @@
 import { ClockIcon } from "@phosphor-icons/react/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogoSVG } from "@/components/layout/logo";
+import { Branding } from "@/components/logo/branding";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
@@ -17,8 +17,7 @@ export default function LinkExpiredPage() {
 					className="flex items-center gap-2 text-foreground"
 					href="https://databuddy.cc"
 				>
-					<LogoSVG className="size-5" />
-					<span className="font-semibold text-sm">Databuddy</span>
+					<Branding priority variant="primary-logo" />
 				</Link>
 			</header>
 

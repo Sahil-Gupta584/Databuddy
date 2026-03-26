@@ -12,9 +12,10 @@ import { cn } from "@/lib/utils";
 
 interface ThemeTogglerProps {
 	className?: string;
+	tooltip?: boolean;
 }
 
-export function ThemeToggle({ className }: ThemeTogglerProps) {
+export function ThemeToggle({ className, tooltip = true }: ThemeTogglerProps) {
 	const { theme, setTheme } = useTheme();
 	const currentTheme = theme ?? "system";
 
@@ -69,7 +70,7 @@ export function ThemeToggle({ className }: ThemeTogglerProps) {
 	};
 
 	return (
-		<Tooltip delayDuration={500}>
+		<Tooltip delayDuration={500} open={tooltip}>
 			<TooltipTrigger asChild>
 				<Button
 					aria-label="Toggle theme"

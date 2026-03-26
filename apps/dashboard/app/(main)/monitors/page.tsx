@@ -47,6 +47,7 @@ export default function MonitorsPage() {
 		url: string;
 		name?: string | null;
 		granularity: string;
+		isPublic?: boolean;
 		jsonParsingConfig?: {
 			enabled: boolean;
 		} | null;
@@ -70,9 +71,10 @@ export default function MonitorsPage() {
 	const handleEdit = (schedule: Monitor) => {
 		setEditingSchedule({
 			id: schedule.id,
-			url: schedule.url,
+			url: schedule.url ?? "",
 			name: schedule.name,
 			granularity: schedule.granularity,
+			isPublic: schedule.isPublic,
 			jsonParsingConfig: schedule.jsonParsingConfig,
 		});
 		setIsSheetOpen(true);
@@ -132,7 +134,7 @@ export default function MonitorsPage() {
 					) : (
 						<MonitorsList
 							isLoading={isLoading}
-							monitors={schedules || []}
+							monitors={(schedules as unknown as Monitor[]) || []}
 							onCreateMonitorAction={handleCreate}
 							onDeleteMonitorAction={handleDelete}
 							onEditMonitorAction={handleEdit}

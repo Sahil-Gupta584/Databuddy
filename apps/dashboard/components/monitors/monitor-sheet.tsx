@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CodeIcon, GearIcon, InfoIcon } from "@phosphor-icons/react";
+import { CodeIcon, GearIcon, GlobeIcon, InfoIcon } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
@@ -58,6 +58,7 @@ const monitorFormSchema = z.object({
 		"hour",
 		"six_hours",
 	]),
+	isPublic: z.boolean(),
 	timeout: z.number().int().min(1000).max(120_000).nullable(),
 	cacheBust: z.boolean(),
 	jsonParsingEnabled: z.boolean(),
@@ -75,6 +76,7 @@ interface MonitorSheetProps {
 		url: string;
 		name?: string | null;
 		granularity: string;
+		isPublic?: boolean;
 		timeout?: number | null;
 		cacheBust?: boolean;
 		jsonParsingConfig?: {
@@ -104,6 +106,7 @@ export function MonitorSheet({
 			granularity:
 				(schedule?.granularity as MonitorFormData["granularity"]) ||
 				"ten_minutes",
+			isPublic: schedule?.isPublic ?? false,
 			timeout: schedule?.timeout ?? null,
 			cacheBust: schedule?.cacheBust ?? false,
 			jsonParsingEnabled: schedule?.jsonParsingConfig?.enabled ?? true,
@@ -147,6 +150,7 @@ export function MonitorSheet({
 				granularity:
 					(schedule?.granularity as MonitorFormData["granularity"]) ||
 					"ten_minutes",
+				isPublic: schedule?.isPublic ?? false,
 				timeout: schedule?.timeout ?? null,
 				cacheBust: schedule?.cacheBust ?? false,
 				jsonParsingEnabled: jsonConfig?.enabled ?? true,
@@ -169,6 +173,7 @@ export function MonitorSheet({
 				await updateMutation.mutateAsync({
 					scheduleId: schedule.id,
 					granularity: data.granularity,
+					isPublic: data.isPublic,
 					timeout: data.timeout,
 					cacheBust: data.cacheBust,
 					jsonParsingConfig,
@@ -187,6 +192,7 @@ export function MonitorSheet({
 					url: data.url,
 					name: data.name || undefined,
 					granularity: data.granularity,
+					isPublic: data.isPublic,
 					timeout: data.timeout ?? undefined,
 					cacheBust: data.cacheBust,
 					jsonParsingConfig,
@@ -320,10 +326,42 @@ export function MonitorSheet({
 								)}
 							/>
 
-							<div className="h-px bg-border" />
+						<div className="h-px bg-border" />
 
-							<div className="space-y-4">
-								<CollapsibleSection
+						<FormField
+							control={form.control}
+							name="isPublic"
+							render={({ field }) => (
+								<FormItem className="flex items-center justify-between gap-4 space-y-0 rounded border p-3">
+									<div className="flex items-center gap-3">
+										<GlobeIcon
+											className="size-5 shrink-0 text-muted-foreground"
+											weight="duotone"
+										/>
+										<div className="space-y-1">
+											<FormLabel className="font-normal text-sm">
+												Public status page
+											</FormLabel>
+											<p className="text-muted-foreground text-xs">
+												Show this monitor on your organization's public status
+												page
+											</p>
+										</div>
+									</div>
+									<FormControl>
+										<Switch
+											checked={field.value}
+											onCheckedChange={field.onChange}
+										/>
+									</FormControl>
+								</FormItem>
+							)}
+						/>
+
+						<div className="h-px bg-border" />
+
+						<div className="space-y-4">
+							<CollapsibleSection
 									badge={
 										(form.watch("timeout") ? 1 : 0) +
 										(form.watch("cacheBust") ? 1 : 0)

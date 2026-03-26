@@ -41,6 +41,7 @@ interface MonitorRowProps {
 		granularity: string;
 		cron: string;
 		isPaused: boolean;
+		isPublic: boolean;
 		createdAt: Date | string;
 		updatedAt: Date | string;
 		website: {
@@ -130,7 +131,7 @@ export function MonitorRow({
 								{displayName}
 							</h3>
 							<Badge
-								className={schedule.isPaused ? "gap-1.5" : "gap-1.5"}
+								className="gap-1.5"
 								variant={schedule.isPaused ? "amber" : "green"}
 							>
 								<span
@@ -140,6 +141,12 @@ export function MonitorRow({
 								/>
 								{schedule.isPaused ? "Paused" : "Active"}
 							</Badge>
+							{schedule.isPublic ? (
+								<Badge className="gap-1" variant="outline">
+									<GlobeIcon className="size-3" weight="duotone" />
+									Public
+								</Badge>
+							) : null}
 						</div>
 						<div className="mt-0.5 flex items-center gap-2">
 							<div className="flex items-center gap-1.5">

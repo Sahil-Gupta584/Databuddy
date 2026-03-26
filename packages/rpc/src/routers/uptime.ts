@@ -94,6 +94,7 @@ const getScheduleOutputSchema = z
 		granularity: z.string(),
 		cron: z.string(),
 		isPaused: z.boolean(),
+		isPublic: z.boolean(),
 		timeout: z.number().nullable().optional(),
 		cacheBust: z.boolean(),
 		jsonParsingConfig: z.unknown().nullable(),
@@ -230,6 +231,7 @@ export const uptimeRouter = {
 				organizationId: z.string(),
 				websiteId: z.string().optional(),
 				granularity: granularityEnum,
+				isPublic: z.boolean().optional(),
 				timeout: z.number().int().min(1000).max(120_000).optional(),
 				cacheBust: z.boolean().optional(),
 				jsonParsingConfig: z
@@ -271,6 +273,7 @@ export const uptimeRouter = {
 				granularity: input.granularity,
 				cron: CRON_GRANULARITIES[input.granularity],
 				isPaused: false,
+				isPublic: input.isPublic ?? false,
 				timeout: input.timeout ?? null,
 				cacheBust: input.cacheBust ?? false,
 				jsonParsingConfig: input.jsonParsingConfig ?? { enabled: true },
@@ -315,6 +318,7 @@ export const uptimeRouter = {
 			z.object({
 				scheduleId: z.string(),
 				granularity: granularityEnum.optional(),
+				isPublic: z.boolean().optional(),
 				timeout: z.number().int().min(1000).max(120_000).nullish(),
 				cacheBust: z.boolean().optional(),
 				jsonParsingConfig: z
@@ -331,6 +335,7 @@ export const uptimeRouter = {
 			const updateData: {
 				granularity?: string;
 				cron?: string;
+				isPublic?: boolean;
 				timeout?: number | null;
 				cacheBust?: boolean;
 				jsonParsingConfig?: unknown;
@@ -344,6 +349,10 @@ export const uptimeRouter = {
 				await createQStashSchedule(input.scheduleId, input.granularity);
 				updateData.granularity = input.granularity;
 				updateData.cron = CRON_GRANULARITIES[input.granularity];
+			}
+
+			if (input.isPublic !== undefined) {
+				updateData.isPublic = input.isPublic;
 			}
 
 			if (input.timeout !== undefined) {

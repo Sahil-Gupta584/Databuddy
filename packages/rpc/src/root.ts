@@ -11,6 +11,7 @@ import { linksRouter } from "./routers/links";
 import { organizationsRouter } from "./routers/organizations";
 import { preferencesRouter } from "./routers/preferences";
 import { revenueRouter } from "./routers/revenue";
+import { statusPageRouter } from "./routers/status-page";
 import { targetGroupsRouter } from "./routers/target-groups";
 import { uptimeRouter } from "./routers/uptime";
 import { websitesRouter } from "./routers/websites";
@@ -29,6 +30,7 @@ export const appRouter = {
 	targetGroups: targetGroupsRouter,
 	organizations: organizationsRouter,
 	billing: billingRouter,
+	statusPage: statusPageRouter,
 	uptime: uptimeRouter,
 	links: linksRouter,
 	revenue: revenueRouter,

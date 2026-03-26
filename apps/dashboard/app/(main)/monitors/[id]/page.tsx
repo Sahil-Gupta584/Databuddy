@@ -3,6 +3,8 @@
 import {
 	ArrowClockwiseIcon,
 	ArrowLeftIcon,
+	ArrowSquareOutIcon,
+	CopyIcon,
 	GlobeIcon,
 	HeartbeatIcon,
 	PauseIcon,
@@ -18,6 +20,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/app/(main)/websites/_components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { MonitorSheet } from "@/components/monitors/monitor-sheet";
+import { useOrganizationsContext } from "@/components/providers/organizations-provider";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -48,9 +51,28 @@ const granularityLabels: Record<string, string> = {
 	day: "Daily",
 };
 
+interface ScheduleData {
+	id: string;
+	websiteId: string | null;
+	url: string;
+	name: string | null;
+	granularity: string;
+	cron: string;
+	isPaused: boolean;
+	isPublic: boolean;
+	qstashStatus: string;
+	jsonParsingConfig?: { enabled: boolean } | null;
+	website?: {
+		id: string;
+		name: string | null;
+		domain: string;
+	} | null;
+}
+
 export default function MonitorDetailsPage() {
 	const { id: scheduleId } = useParams();
 	const router = useRouter();
+	const { activeOrganization } = useOrganizationsContext();
 	const { dateRange } = useDateFilters();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [editingSchedule, setEditingSchedule] = useState<{
@@ -58,6 +80,7 @@ export default function MonitorDetailsPage() {
 		url: string;
 		name?: string | null;
 		granularity: string;
+		isPublic?: boolean;
 		jsonParsingConfig?: {
 			enabled: boolean;
 		} | null;
@@ -67,7 +90,7 @@ export default function MonitorDetailsPage() {
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	const {
-		data: schedule,
+		data: rawSchedule,
 		refetch: refetchSchedule,
 		isLoading: isLoadingSchedule,
 		isError: isScheduleError,
@@ -78,6 +101,8 @@ export default function MonitorDetailsPage() {
 		enabled: !!scheduleId,
 	});
 
+	const schedule = rawSchedule as ScheduleData | undefined;
+
 	const pauseMutation = useMutation({
 		...orpc.uptime.pauseSchedule.mutationOptions(),
 	});
@@ -86,6 +111,9 @@ export default function MonitorDetailsPage() {
 	});
 	const deleteMutation = useMutation({
 		...orpc.uptime.deleteSchedule.mutationOptions(),
+	});
+	const togglePublicMutation = useMutation({
+		...orpc.statusPage.togglePublicMonitor.mutationOptions(),
 	});
 
 	const hasMonitor = !!schedule;
@@ -163,6 +191,7 @@ export default function MonitorDetailsPage() {
 				url: schedule.url,
 				name: schedule.name,
 				granularity: schedule.granularity,
+				isPublic: schedule.isPublic,
 				jsonParsingConfig: schedule.jsonParsingConfig as {
 					enabled: boolean;
 				} | null,
@@ -228,6 +257,40 @@ export default function MonitorDetailsPage() {
 			// Error handled by individual refetch handlers
 		}
 		setIsRefreshing(false);
+	};
+
+	const statusPageUrl = activeOrganization?.slug
+		? `${globalThis.location?.origin ?? ""}/status/${activeOrganization.slug}`
+		: null;
+
+	const handleTogglePublic = async () => {
+		if (!schedule) {
+			return;
+		}
+
+		try {
+			const result = await togglePublicMutation.mutateAsync({
+				scheduleId: schedule.id,
+				isPublic: !schedule.isPublic,
+			});
+			await refetchSchedule();
+			toast.success(
+				result.isPublic
+					? "Monitor is now visible on the public status page"
+					: "Monitor removed from the public status page"
+			);
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : "Failed to update visibility";
+			toast.error(errorMessage);
+		}
+	};
+
+	const handleCopyStatusUrl = () => {
+		if (statusPageUrl) {
+			navigator.clipboard.writeText(statusPageUrl);
+			toast.success("Status page URL copied");
+		}
 	};
 
 	if (isLoadingSchedule) {
@@ -301,6 +364,15 @@ export default function MonitorDetailsPage() {
 							/>
 						</Button>
 						<Button
+							disabled={togglePublicMutation.isPending}
+							onClick={handleTogglePublic}
+							size="sm"
+							variant={schedule.isPublic ? "default" : "outline"}
+						>
+							<GlobeIcon size={16} weight="duotone" />
+							{schedule.isPublic ? "Public" : "Make Public"}
+						</Button>
+						<Button
 							disabled={
 								isPausing || pauseMutation.isPending || resumeMutation.isPending
 							}
@@ -339,6 +411,52 @@ export default function MonitorDetailsPage() {
 			/>
 
 			<div className="flex-1 overflow-y-auto">
+				{schedule.isPublic && statusPageUrl ? (
+					<div className="flex h-10 items-center justify-between border-b bg-emerald-500/5 px-4 py-2.5 sm:px-6">
+						<div className="flex items-center gap-2 overflow-hidden">
+							<GlobeIcon
+								className="size-4 shrink-0 text-emerald-600"
+								weight="duotone"
+							/>
+							<span className="truncate text-muted-foreground text-xs">
+								Visible on{" "}
+								<Link
+									className="font-medium text-foreground hover:underline"
+									href={statusPageUrl}
+									rel="noopener noreferrer"
+									target="_blank"
+								>
+									public status page
+								</Link>
+							</span>
+						</div>
+						<div className="flex shrink-0 items-center gap-1">
+							<Button
+								aria-label="Copy status page URL"
+								onClick={handleCopyStatusUrl}
+								size="sm"
+								variant="ghost"
+							>
+								<CopyIcon size={14} weight="duotone" />
+							</Button>
+							<Button
+								aria-label="Open status page"
+								asChild
+								size="sm"
+								variant="ghost"
+							>
+								<Link
+									href={statusPageUrl}
+									rel="noopener noreferrer"
+									target="_blank"
+								>
+									<ArrowSquareOutIcon size={14} weight="duotone" />
+								</Link>
+							</Button>
+						</div>
+					</div>
+				) : null}
+
 				<div className="border-b bg-card px-6 py-4">
 					<div className="flex flex-wrap items-center gap-4 text-sm">
 						<div className="flex items-center gap-2">
