@@ -17,7 +17,6 @@ import {
 	type NotificationResult,
 	sendSlackWebhook,
 } from "@databuddy/notifications";
-import { getRedisCache } from "@databuddy/redis";
 import { createId } from "@databuddy/shared/utils/ids";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { betterAuth } from "better-auth/minimal";
@@ -188,7 +187,7 @@ export const auth = betterAuth({
 			enabled: isProduction(),
 			domain: ".databuddy.cc",
 		},
-		cookiePrefix: "databuddy",
+		cookiePrefix: isProduction() ? "databuddy" : "databuddy-dev",
 		useSecureCookies: isProduction(),
 	},
 	trustedOrigins: [
@@ -240,26 +239,6 @@ export const auth = betterAuth({
 				subject: "Verify your email",
 				react: VerificationEmail({ url }),
 			});
-		},
-	},
-	session: {
-		cookieCache: {
-			enabled: true,
-			maxAge: 5 * 60,
-		},
-		storeSessionInDatabase: true,
-		preserveSessionInDatabase: true,
-	},
-	secondaryStorage: {
-		get: async (key) => {
-			const value = await getRedisCache()?.get(key);
-			return value ? value : null;
-		},
-		set: async (key, value, ttl = 60 * 60 * 24) => {
-			await getRedisCache()?.setex(key, ttl, value);
-		},
-		delete: async (key) => {
-			await getRedisCache()?.del(key);
 		},
 	},
 	plugins: [
