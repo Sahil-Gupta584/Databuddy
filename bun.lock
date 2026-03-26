@@ -550,7 +550,7 @@
     },
     "packages/sdk": {
       "name": "@databuddy/sdk",
-      "version": "2.3.29",
+      "version": "2.3.30",
       "devDependencies": {
         "@playwright/test": "^1.58.2",
         "@types/node": "^20.0.0",
