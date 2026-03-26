@@ -59,7 +59,7 @@ export function useFlags() {
 	const state = globalState;
 	const manager = globalManager;
 
-	const isEnabled = (key: string): FlagState => manager.isEnabled(key);
+	const getFlag = (key: string): FlagState => manager.isEnabled(key);
 
 	const fetchAllFlags = () => manager.fetchAllFlags();
 
@@ -78,7 +78,7 @@ export function useFlags() {
 	};
 
 	return {
-		isEnabled,
+		getFlag,
 		fetchAllFlags,
 		updateUser,
 		refresh,

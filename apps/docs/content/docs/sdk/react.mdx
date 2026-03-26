@@ -60,7 +60,6 @@ The `Databuddy` component injects the tracking script and configures analytics. 
 | `trackWebVitals` | `false` | Core Web Vitals (LCP, FID, CLS, TTFB) |
 | `trackErrors` | `false` | JavaScript errors and unhandled rejections |
 | `trackOutgoingLinks` | `false` | Clicks on external links |
-| `trackScrollDepth` | `false` | Scroll depth milestones (25%, 50%, 75%, 100%) |
 | `trackInteractions` | `false` | Button clicks and form submissions |
 | `trackAttributes` | `false` | Elements with `data-track` attributes |
 | `trackHashChanges` | `false` | Hash changes in the URL |
@@ -95,7 +94,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           trackWebVitals
           trackErrors
           trackOutgoingLinks
-          trackScrollDepth
           enableBatching
           batchSize={20}
           disabled={process.env.NODE_ENV === "development"}

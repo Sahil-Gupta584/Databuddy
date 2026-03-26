@@ -76,12 +76,6 @@ export const ADVANCED_TRACKING_OPTIONS: TrackingOptionConfig[] = [
 		description: "Capture JavaScript errors and exceptions",
 		data: ["Error message", "Stack trace", "File location"],
 	},
-	{
-		key: "trackScrollDepth",
-		title: "Scroll Depth",
-		description: "Track how far users scroll on pages",
-		data: ["Max scroll %", "Scroll milestones"],
-	},
 ];
 
 // Settings tabs

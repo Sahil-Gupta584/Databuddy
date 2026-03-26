@@ -228,7 +228,6 @@ test.describe("CoreFlagsManager", () => {
 			expect(state.on).toBe(false);
 			expect(state.loading).toBe(true);
 			expect(state.status).toBe("loading");
-			expect(state.isReady).toBe(false);
 		});
 
 		test("returns ready state for cached flag", async ({ page }) => {
@@ -243,10 +242,8 @@ test.describe("CoreFlagsManager", () => {
 			});
 
 			expect(state.on).toBe(true);
-			expect(state.enabled).toBe(true);
 			expect(state.loading).toBe(false);
 			expect(state.status).toBe("ready");
-			expect(state.isReady).toBe(true);
 		});
 	});
 
@@ -336,8 +333,8 @@ test.describe("CoreFlagsManager", () => {
 				return { cached, afterExpiry };
 			});
 
-			expect(result.cached.isReady).toBe(true);
-			expect(result.afterExpiry.isReady).toBe(false);
+			expect(result.cached.status).toBe("ready");
+			expect(result.afterExpiry.status).toBe("loading");
 			expect(result.afterExpiry.loading).toBe(true);
 		});
 	});

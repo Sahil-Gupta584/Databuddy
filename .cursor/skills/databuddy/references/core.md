@@ -50,7 +50,6 @@ import {
 | `trackAttributes` | `boolean` | `false` | Track data-* attributes |
 | `trackOutgoingLinks` | `boolean` | `false` | Track outgoing link clicks |
 | `trackInteractions` | `boolean` | `false` | Track user interactions |
-| `trackScrollDepth` | `boolean` | `false` | Track scroll depth |
 | `trackPerformance` | `boolean` | `true` | Track performance metrics |
 | `trackWebVitals` | `boolean` | `false` | Track Web Vitals |
 | `trackErrors` | `boolean` | `false` | Track JavaScript errors |
@@ -107,8 +106,8 @@ window.databuddy.flush();
 
 | Event | Properties |
 |-------|------------|
-| `screen_view` | `time_on_page`, `scroll_depth`, `interaction_count`, `is_bounce` |
-| `page_exit` | `time_on_page`, `scroll_depth`, `interaction_count`, `page_count`, `is_bounce` |
+| `screen_view` | `page_count`, `time_on_page`, `scroll_depth`, `interaction_count` |
+| `page_exit` | `time_on_page`, `scroll_depth`, `interaction_count`, `page_count` |
 | `button_click` | `button_text`, `button_type`, `button_id`, `element_class` |
 | `link_out` | `href`, `text`, `target_domain` |
 | `form_submit` | `form_id`, `form_name`, `form_type`, `success` |

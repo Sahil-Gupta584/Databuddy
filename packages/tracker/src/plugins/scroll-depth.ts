@@ -1,4 +1,5 @@
 import type { BaseTracker } from "../core/tracker";
+import { updateMaxScrollDepth } from "./scroll-depth-math";
 
 export function initScrollDepthTracking(tracker: BaseTracker) {
 	if (tracker.isServer()) {
@@ -8,18 +9,12 @@ export function initScrollDepthTracking(tracker: BaseTracker) {
 	window.addEventListener(
 		"scroll",
 		() => {
-			const scrollHeight =
-				document.documentElement.scrollHeight - window.innerHeight;
-			if (scrollHeight <= 0) {
-				tracker.maxScrollDepth = 100;
-				return;
-			}
-			const currentScroll = window.scrollY;
-			const scrollPercent = Math.min(
-				100,
-				Math.round((currentScroll / scrollHeight) * 100)
+			tracker.maxScrollDepth = updateMaxScrollDepth(
+				tracker.maxScrollDepth,
+				window.scrollY,
+				document.documentElement.scrollHeight,
+				window.innerHeight
 			);
-			tracker.maxScrollDepth = Math.max(tracker.maxScrollDepth, scrollPercent);
 		},
 		{ passive: true }
 	);

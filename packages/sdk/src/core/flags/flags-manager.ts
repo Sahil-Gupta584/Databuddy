@@ -401,11 +401,8 @@ export class CoreFlagsManager implements FlagsManager {
 
 			return {
 				on: cached.result.enabled,
-				enabled: cached.result.enabled,
 				status: cached.result.reason === "ERROR" ? "error" : "ready",
 				loading: false,
-				isLoading: false,
-				isReady: true,
 				value: cached.result.value,
 				variant: cached.result.variant,
 			};
@@ -415,11 +412,8 @@ export class CoreFlagsManager implements FlagsManager {
 		if (this.inFlight.has(cacheKey)) {
 			return {
 				on: false,
-				enabled: false,
 				status: "loading",
 				loading: true,
-				isLoading: true,
-				isReady: false,
 			};
 		}
 
@@ -430,11 +424,8 @@ export class CoreFlagsManager implements FlagsManager {
 
 		return {
 			on: false,
-			enabled: false,
 			status: "loading",
 			loading: true,
-			isLoading: true,
-			isReady: false,
 		};
 	}
 

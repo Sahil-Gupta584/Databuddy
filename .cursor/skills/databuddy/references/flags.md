@@ -83,10 +83,7 @@ Returns `FlagState`:
 ```typescript
 interface FlagState {
   on: boolean;           // Is flag enabled
-  enabled: boolean;      // Alias for on
   loading: boolean;      // Is loading
-  isLoading: boolean;    // Alias for loading
-  isReady: boolean;      // Is ready
   status: FlagStatus;    // "pending" | "loading" | "ready" | "error"
   value?: unknown;       // Flag value (for non-boolean flags)
   variant?: string;      // Variant name (for A/B tests)

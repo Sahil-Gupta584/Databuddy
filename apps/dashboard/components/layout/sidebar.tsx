@@ -74,7 +74,7 @@ export function Sidebar() {
 		[websiteId, websites]
 	);
 
-	const { isEnabled } = useFlags();
+	const { getFlag } = useFlags();
 
 	const getNavigationConfig = useMemo((): NavigationConfig => {
 		const baseConfig = getContextConfig(pathname);
@@ -122,7 +122,7 @@ export function Sidebar() {
 					if (isNavigationSection(entry)) {
 						const filteredItems = entry.items.filter((item) => {
 							if (item.flag) {
-								const flagState = isEnabled(item.flag);
+								const flagState = getFlag(item.flag);
 								return flagState.status === "ready" && flagState.on;
 							}
 							return true;
@@ -133,7 +133,7 @@ export function Sidebar() {
 				})
 				.filter((entry) => {
 					if (entry.flag) {
-						const flagState = isEnabled(entry.flag);
+						const flagState = getFlag(entry.flag);
 						if (!(flagState.status === "ready" && flagState.on)) {
 							return false;
 						}
@@ -155,7 +155,7 @@ export function Sidebar() {
 		currentWebsite,
 		websites,
 		isLoadingWebsites,
-		isEnabled,
+		getFlag,
 	]);
 
 	const defaultCategory = useMemo(

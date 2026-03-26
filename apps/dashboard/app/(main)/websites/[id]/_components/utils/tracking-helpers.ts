@@ -45,21 +45,6 @@ export function enableAllInteractionTracking(
 }
 
 /**
- * Enable all engagement tracking options
- */
-export function enableAllEngagementTracking(
-	options: TrackingOptions
-): TrackingOptions {
-	return {
-		...options,
-		trackEngagement: true,
-		trackScrollDepth: true,
-		trackExitIntent: true,
-		trackBounceRate: true,
-	};
-}
-
-/**
  * Enable all performance tracking options
  */
 export function enableAllPerformanceTracking(
@@ -81,7 +66,6 @@ export function enableAllAdvancedTracking(
 ): TrackingOptions {
 	return {
 		...options,
-		...enableAllEngagementTracking(options),
 		...enableAllPerformanceTracking(options),
 		trackErrors: true,
 		trackPerformance: true,
@@ -131,10 +115,6 @@ export function enablePrivacyMode(options: TrackingOptions): TrackingOptions {
 		trackInteractions: false,
 		trackOutgoingLinks: false,
 		trackAttributes: false,
-		trackEngagement: false,
-		trackScrollDepth: false,
-		trackExitIntent: false,
-		trackBounceRate: false,
 		trackPerformance: false,
 		trackWebVitals: false,
 		trackErrors: false,

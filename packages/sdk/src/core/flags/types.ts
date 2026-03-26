@@ -51,16 +51,10 @@ export type FlagStatus = "loading" | "ready" | "error" | "pending";
 export interface FlagState {
 	/** Whether the flag is enabled (true/false) */
 	on: boolean;
-	/** @deprecated Use `on` instead */
-	enabled: boolean;
 	/**  Current status: loading, ready, error, or pending  */
 	status: FlagStatus;
 	/** Whether the flag is still loading */
 	loading: boolean;
-	/** @deprecated Use `status === 'ready'` instead */
-	isLoading: boolean;
-	/** @deprecated Use `status === 'ready'` instead */
-	isReady: boolean;
 	/** The flag's value (boolean, string, or number) */
 	value?: boolean | string | number;
 	/** Variant name for multivariate flags */
@@ -83,8 +77,6 @@ export interface FeatureState {
 
 /** Context returned by useFlags hook */
 export interface FlagsContext {
-	/** @deprecated Use getFlag instead - confusing name */
-	isEnabled: (key: string) => FlagState;
 	/** Get a flag's full state */
 	getFlag: (key: string) => FlagState;
 	/** Get a flag's value with type safety */

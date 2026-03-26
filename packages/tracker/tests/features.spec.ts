@@ -1,21 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { findEvent, hasEvent } from "./test-utils";
+import { findEvent, hasEvent, setupBasketMock } from "./test-utils";
 
 test.describe("Feature Tracking", () => {
 	test.beforeEach(async ({ page }) => {
-		// Disable sendBeacon for reliable route interception (WebKit issue)
-		await page.addInitScript(() => {
-			Object.defineProperty(navigator, "sendBeacon", { value: undefined });
-		});
-
-		await page.route("**/basket.databuddy.cc/*", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({ success: true }),
-				headers: { "Access-Control-Allow-Origin": "*" },
-			});
-		});
+		await setupBasketMock(page);
 	});
 
 	test.describe("maskPatterns", () => {
@@ -309,45 +297,6 @@ test.describe("Feature Tracking", () => {
 			expect(event?.name).toBe("card_click");
 			const props = event?.properties as Record<string, unknown> | undefined;
 			expect(props?.cardId).toBe("123");
-		});
-	});
-
-	test.describe("trackScrollDepth", () => {
-		test("tracks maximum scroll depth", async ({ page }) => {
-			await page.goto("/test");
-			await page.evaluate(() => {
-				// Create tall content
-				document.body.style.height = "3000px";
-				(window as any).databuddyConfig = {
-					clientId: "test-scroll",
-					ignoreBotDetection: true,
-					batchTimeout: 200,
-					trackScrollDepth: true,
-				};
-			});
-			await page.addScriptTag({ url: "/dist/databuddy-debug.js" });
-
-			await expect
-				.poll(async () => await page.evaluate(() => !!(window as any).db))
-				.toBeTruthy();
-
-			// Scroll down
-			await page.evaluate(() => {
-				window.scrollTo(0, 500);
-			});
-			await page.waitForTimeout(100);
-
-			// Scroll more
-			await page.evaluate(() => {
-				window.scrollTo(0, 1000);
-			});
-			await page.waitForTimeout(100);
-
-			// maxScrollDepth should be updated (we can't directly access it but can verify no errors)
-			const noErrors = await page.evaluate(
-				() => typeof (window as any).db === "object"
-			);
-			expect(noErrors).toBe(true);
 		});
 	});
 

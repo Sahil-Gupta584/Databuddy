@@ -68,7 +68,6 @@ Key props:
 | `trackWebVitals` | `boolean` | `false` | Track Web Vitals |
 | `trackErrors` | `boolean` | `false` | Track JS errors |
 | `trackPerformance` | `boolean` | `true` | Track performance |
-| `trackScrollDepth` | `boolean` | `false` | Track scroll depth |
 | `trackOutgoingLinks` | `boolean` | `false` | Track outgoing clicks |
 | `debug` | `boolean` | `false` | Enable debug logging |
 
@@ -118,7 +117,6 @@ import {
   trackWebVitals
   trackErrors
   trackPerformance
-  trackScrollDepth
   trackOutgoingLinks
   trackInteractions
   trackHashChanges

@@ -406,11 +406,6 @@ The `FlagState` object has the following properties:
     status: FlagStatus;       // 'loading' | 'ready' | 'error' | 'pending'
     value?: boolean | string | number;  // The flag's value
     variant?: string;         // Variant for A/B tests
-    
-    // Deprecated (use above instead):
-    enabled: boolean;         // Use 'on' instead
-    isLoading: boolean;       // Use 'loading' instead
-    isReady: boolean;         // Use 'status === "ready"' instead
   }`}
 </CodeBlock>
 
@@ -591,14 +586,14 @@ Then in the dashboard, set the **Rollout Unit** to "Organization" or "Team" when
 ## Migration from Old API
 
 <CodeBlock language="tsx">
-  {`// ❌ Old (confusing)
-  const { isEnabled } = useFlags();
-  const flag = isEnabled('my-feature');
-  if (flag.isReady && flag.enabled) {
+  {`// ❌ Removed from context — use getFlag / hooks instead
+  const { getFlag } = useFlags();
+  const flag = getFlag('my-feature');
+  if (flag.status === 'ready' && flag.on) {
     return <NewFeature />;
   }
 
-  // ✅ New (clear)
+  // ✅ Prefer hooks
   const { on, loading } = useFeature('my-feature');
   if (loading) return <Skeleton />;
   return on ? <NewFeature /> : <OldFeature />;
@@ -607,8 +602,6 @@ Then in the dashboard, set the **Rollout Unit** to "Organization" or "Team" when
   const isOn = useFeatureOn('my-feature', false);
   return isOn ? <NewFeature /> : <OldFeature />;`}
 </CodeBlock>
-
-The old API (`isEnabled`) is still supported for backwards compatibility but deprecated.
 
 ## Debug Mode
 

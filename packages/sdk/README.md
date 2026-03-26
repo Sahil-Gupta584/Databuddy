@@ -71,14 +71,13 @@ All options are type-safe and documented in `DatabuddyConfig`:
 | `trackAttributes`     | boolean   | `false`      | Track data-* attributes on elements. |
 | `trackOutgoingLinks`  | boolean   | `false`      | Track clicks on outgoing links. |
 | `trackInteractions`   | boolean   | `false`      | Track user interactions. |
-| `trackScrollDepth`    | boolean   | `false`      | Track scroll depth. |
 | `trackPerformance`    | boolean   | `true`       | Track page performance metrics. |
 | `trackWebVitals`      | boolean   | `false`      | Track Web Vitals metrics. |
 | `trackErrors`         | boolean   | `false`      | Track JavaScript errors. |
 | `ignoreBotDetection`  | boolean   | `false`      | Ignore bot detection. |
 | `usePixel`            | boolean   | `false`      | Use pixel tracking instead of script. |
 | `samplingRate`        | number    | `1.0`        | Sampling rate (0.0–1.0). |
-| `enableRetries`       | boolean   | `false`      | Enable retries for failed requests. |
+| `enableRetries`       | boolean   | `true`       | Enable retries for failed requests. |
 | `maxRetries`          | number    | `3`          | Max retries. |
 | `initialRetryDelay`   | number    | `500`        | Initial retry delay (ms). |
 | `enableBatching`       | boolean   | `true`       | Enable event batching. |

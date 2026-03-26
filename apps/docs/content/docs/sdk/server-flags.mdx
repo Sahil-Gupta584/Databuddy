@@ -132,26 +132,21 @@ const value = flags.getValue("max-items", 10);`}
 
 ### isEnabled(key)
 
-Synchronous check from cache (call after `fetchAllFlags` or `getFlag`):
+Synchronous read from cache (call after `fetchAllFlags` or `getFlag`). Returns `FlagState`:
 
 <CodeBlock language="tsx">
   {`const state = flags.isEnabled("my-feature");
 
-if (state.isReady && state.on) {
+if (state.status === "ready" && state.on) {
   // Feature is enabled
 }`}
 </CodeBlock>
 
-Returns a `FlagState` object:
-
 <CodeBlock language="tsx">
   {`interface FlagState {
-  on: boolean;          // Is the flag on?
-  enabled: boolean;     // Alias for on
-  status: "ready" | "loading" | "error";
+  on: boolean;
+  status: "ready" | "loading" | "error" | "pending";
   loading: boolean;
-  isLoading: boolean;
-  isReady: boolean;
   value?: boolean | string | number;
   variant?: string;
 }`}
@@ -371,7 +366,7 @@ Check if the manager is ready:
 
 <CodeBlock language="tsx">
   {`if (flags.isReady()) {
-  // Safe to use synchronous methods
+  // Safe to use synchronous reads
   const state = flags.isEnabled("my-feature");
 }`}
 </CodeBlock>

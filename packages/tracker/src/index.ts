@@ -1,6 +1,11 @@
 import { BaseTracker } from "./core/tracker";
 import type { TrackerOptions } from "./core/types";
-import { generateUUIDv4, getTrackerConfig, isOptedOut } from "./core/utils";
+import {
+	generateUUIDv4,
+	getTrackerConfig,
+	isDebugMode,
+	isOptedOut,
+} from "./core/utils";
 import { initErrorTracking } from "./plugins/errors";
 import { initInteractionTracking } from "./plugins/interactions";
 import { initOutgoingLinksTracking } from "./plugins/outgoing-links";
@@ -37,7 +42,7 @@ export class Databuddy extends BaseTracker {
 		}
 
 		if (typeof window !== "undefined") {
-			window.databuddy = {
+			const api = {
 				track: (name: string, props?: Record<string, unknown>) =>
 					this.track(name, props),
 				screenView: (props?: Record<string, unknown>) => this.screenView(props),
@@ -46,7 +51,11 @@ export class Databuddy extends BaseTracker {
 				setGlobalProperties: (props: Record<string, unknown>) =>
 					this.setGlobalProperties(props),
 				options: this.options,
+				...(isDebugMode()
+					? { __getMaxScrollDepth: () => this.maxScrollDepth }
+					: {}),
 			};
+			window.databuddy = api;
 			window.db = window.databuddy;
 		}
 	}
@@ -77,9 +86,7 @@ export class Databuddy extends BaseTracker {
 		if (this.options.trackAttributes) {
 			this.trackAttributes();
 		}
-		if (this.options.trackScrollDepth) {
-			initScrollDepthTracking(this);
-		}
+		initScrollDepthTracking(this);
 		if (this.options.trackInteractions) {
 			initInteractionTracking(this);
 		}

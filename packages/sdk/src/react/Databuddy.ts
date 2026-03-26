@@ -37,7 +37,6 @@ import { detectClientId } from "@/utils";
  * <Databuddy
  *   clientId="your-client-id"
  *   trackWebVitals
- *   trackScrollDepth
  *   trackOutgoingLinks
  * />
  * ```

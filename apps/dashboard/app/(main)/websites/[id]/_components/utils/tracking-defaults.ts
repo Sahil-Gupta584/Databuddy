@@ -14,12 +14,6 @@ export const ACTUAL_LIBRARY_DEFAULTS: TrackingOptions = {
 	trackOutgoingLinks: false,
 	trackInteractions: false,
 
-	// Advanced tracking
-	trackEngagement: false,
-	trackScrollDepth: false,
-	trackExitIntent: false,
-	trackBounceRate: false,
-
 	// Performance tracking
 	trackPerformance: true,
 	trackWebVitals: false,
@@ -27,7 +21,7 @@ export const ACTUAL_LIBRARY_DEFAULTS: TrackingOptions = {
 
 	// Optimization
 	samplingRate: 1.0,
-	enableRetries: false,
+	enableRetries: true,
 	maxRetries: 3,
 	initialRetryDelay: 500,
 

@@ -12,7 +12,6 @@ export type TrackerOptions = {
 	trackOutgoingLinks?: boolean;
 	trackPerformance?: boolean;
 	trackWebVitals?: boolean;
-	trackScrollDepth?: boolean;
 	trackInteractions?: boolean;
 	trackErrors?: boolean;
 	ignoreBotDetection?: boolean;
@@ -106,6 +105,7 @@ export type DatabuddyGlobal = {
 	flush: () => void;
 	setGlobalProperties: (props: Record<string, unknown>) => void;
 	options: TrackerOptions;
+	__getMaxScrollDepth?: () => number;
 };
 
 declare global {

@@ -25,7 +25,6 @@ This page documents all configuration options across the Databuddy SDK platforms
   trackWebVitals          // default: false
   trackErrors             // default: false
   trackOutgoingLinks      // default: false
-  trackScrollDepth        // default: false
   trackInteractions       // default: false
   trackAttributes         // default: false
   trackHashChanges        // default: false
@@ -72,7 +71,6 @@ This page documents all configuration options across the Databuddy SDK platforms
 | `trackWebVitals` | `boolean` | `false` | Core Web Vitals (LCP, FID, CLS, TTFB) |
 | `trackErrors` | `boolean` | `false` | JavaScript errors |
 | `trackOutgoingLinks` | `boolean` | `false` | External link clicks |
-| `trackScrollDepth` | `boolean` | `false` | Scroll milestones (25%, 50%, 75%, 100%) |
 | `trackInteractions` | `boolean` | `false` | Button clicks and form submissions |
 | `trackAttributes` | `boolean` | `false` | Elements with `data-track` attributes |
 | `trackHashChanges` | `boolean` | `false` | URL hash changes |
@@ -129,7 +127,6 @@ Vue uses the same props as React but with kebab-case naming:
   data-track-web-vitals
   data-track-errors
   data-track-outgoing-links
-  data-track-scroll-depth
   data-enable-batching
   data-batch-size="20"
   data-batch-timeout="2000"
@@ -149,7 +146,6 @@ Vue uses the same props as React but with kebab-case naming:
 | `data-track-web-vitals` | flag | `false` | Track Core Web Vitals |
 | `data-track-errors` | flag | `false` | Track JavaScript errors |
 | `data-track-outgoing-links` | flag | `false` | Track external links |
-| `data-track-scroll-depth` | flag | `false` | Track scroll depth |
 | `data-track-interactions` | flag | `false` | Track interactions |
 | `data-track-attributes` | flag | `false` | Track data-track elements |
 | `data-track-hash-changes` | flag | `false` | Track hash changes |

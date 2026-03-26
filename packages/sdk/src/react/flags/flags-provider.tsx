@@ -45,22 +45,16 @@ function createFlagState(
 	if (isPending) {
 		return {
 			on: false,
-			enabled: false,
 			status: "pending",
 			loading: true,
-			isLoading: true,
-			isReady: false,
 		};
 	}
 
 	if (isLoading || !result) {
 		return {
 			on: false,
-			enabled: false,
 			status: "loading",
 			loading: true,
-			isLoading: true,
-			isReady: false,
 		};
 	}
 
@@ -68,11 +62,8 @@ function createFlagState(
 
 	return {
 		on: result.enabled,
-		enabled: result.enabled,
 		status,
 		loading: false,
-		isLoading: false,
-		isReady: true,
 		value: result.value,
 		variant: result.variant,
 	};
@@ -163,7 +154,7 @@ export function FlagsProvider({ children, ...config }: FlagsProviderProps) {
 				const managerState = manager.isEnabled(key);
 				return createFlagState(
 					result,
-					managerState.isLoading,
+					managerState.loading,
 					config.isPending ?? false
 				);
 			},
@@ -176,7 +167,7 @@ export function FlagsProvider({ children, ...config }: FlagsProviderProps) {
 				}
 				// Check manager cache
 				const state = manager.isEnabled(key);
-				return state.enabled;
+				return state.on;
 			},
 
 			// Get typed value
@@ -201,17 +192,6 @@ export function FlagsProvider({ children, ...config }: FlagsProviderProps) {
 			refresh: (forceClear = false) => manager.refresh(forceClear),
 
 			isReady: store.isReady,
-
-			// Deprecated: kept for backwards compatibility
-			isEnabled: (key: string): FlagState => {
-				const result = store.flags[key];
-				const managerState = manager.isEnabled(key);
-				return createFlagState(
-					result,
-					managerState.isLoading,
-					config.isPending ?? false
-				);
-			},
 		}),
 		[manager, store, config.isPending]
 	);
@@ -238,7 +218,6 @@ export function useFlags(): FlagsContext {
 	if (!context) {
 		logger.warn("useFlags called outside FlagsProvider");
 		return {
-			isEnabled: () => createFlagState(undefined, false, false),
 			getFlag: () => createFlagState(undefined, false, false),
 			isOn: () => false,
 			getValue: <T extends boolean | string | number = boolean>(

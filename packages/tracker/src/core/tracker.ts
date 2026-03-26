@@ -63,7 +63,7 @@ export class BaseTracker {
 			disabled: false,
 			trackPerformance: true,
 			samplingRate: 1.0,
-			enableRetries: false,
+			enableRetries: true,
 			maxRetries: 3,
 			initialRetryDelay: 500,
 			enableBatching: true,
@@ -74,6 +74,9 @@ export class BaseTracker {
 			...options,
 		};
 
+		const effectiveMaxRetries =
+			this.options.enableRetries === false ? 0 : (this.options.maxRetries ?? 3);
+
 		this.api = new HttpClient({
 			baseUrl: this.options.apiUrl || "https://basket.databuddy.cc",
 			defaultHeaders: {
@@ -81,8 +84,8 @@ export class BaseTracker {
 				"databuddy-sdk-name": this.options.sdk || "web",
 				"databuddy-sdk-version": this.options.sdkVersion || "2.0.0",
 			},
-			maxRetries: this.options.maxRetries,
-			initialRetryDelay: this.options.initialRetryDelay,
+			maxRetries: effectiveMaxRetries,
+			initialRetryDelay: this.options.initialRetryDelay ?? 500,
 		});
 
 		if (this.isServer()) {

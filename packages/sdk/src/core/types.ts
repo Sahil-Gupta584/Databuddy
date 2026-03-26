@@ -8,7 +8,6 @@
  *   apiUrl="https://basket.databuddy.cc"
  *   trackWebVitals
  *   trackErrors
- *   trackScrollDepth
  *   samplingRate={0.5}
  * />
  * ```
@@ -87,13 +86,6 @@ export interface DatabuddyConfig {
 	 */
 	trackInteractions?: boolean;
 
-	// --- Engagement Tracking ---
-
-	/**
-	 * Track scroll depth (default: false).
-	 */
-	trackScrollDepth?: boolean;
-
 	// --- Performance Tracking ---
 
 	/**
@@ -120,7 +112,7 @@ export interface DatabuddyConfig {
 	samplingRate?: number;
 
 	/**
-	 * Enable retries for failed requests (default: false).
+	 * Enable retries for failed requests (default: true).
 	 */
 	enableRetries?: boolean;
 
@@ -236,20 +228,19 @@ export interface EventProperties extends BaseEventProperties {
 export interface EventTypeMap {
 	// Core events
 	screen_view: {
+		page_count?: number;
 		time_on_page?: number;
 		scroll_depth?: number;
 		interaction_count?: number;
-		has_exit_intent?: boolean;
-		is_bounce?: 0 | 1;
 	};
 
 	page_exit: {
+		path?: string;
+		timestamp?: number;
 		time_on_page: number;
 		scroll_depth: number;
 		interaction_count: number;
-		has_exit_intent: boolean;
 		page_count: number;
-		is_bounce: 0 | 1;
 	};
 
 	// Interaction events

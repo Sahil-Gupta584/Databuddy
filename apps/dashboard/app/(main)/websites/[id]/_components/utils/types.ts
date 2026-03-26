@@ -40,10 +40,6 @@ export interface TrackingOptions {
 	trackAttributes: boolean;
 	trackOutgoingLinks: boolean;
 	trackInteractions: boolean;
-	trackEngagement: boolean;
-	trackScrollDepth: boolean;
-	trackExitIntent: boolean;
-	trackBounceRate: boolean;
 	trackPerformance: boolean;
 	trackWebVitals: boolean;
 	trackErrors: boolean;
