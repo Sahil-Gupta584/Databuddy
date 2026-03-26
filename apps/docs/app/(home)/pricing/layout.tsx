@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { StructuredData } from "@/components/structured-data";
 import { RAW_PLANS } from "./data";
+import { pricingFaqItems } from "./pricing-faq";
 
 const pricingTitle = "Pricing — Free Tier, Fair Overage, Scale to 100M Events";
 const pricingDescription =
@@ -33,6 +34,10 @@ export default function PricingLayout({
 						type: "softwareOffers",
 						name: "Databuddy Analytics Pricing",
 						plans: RAW_PLANS,
+					},
+					{
+						type: "faq",
+						items: pricingFaqItems,
 					},
 				]}
 				page={{

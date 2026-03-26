@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Footer } from "@/components/footer";
 import { displayNameForPlan, selectBestPlan } from "./_pricing/best-plan";
+import { PricingFaq } from "./pricing-faq";
 import { Estimator } from "./_pricing/estimator";
 import { estimateTieredOverageCostFromTiers } from "./_pricing/estimator-utils";
 import { normalizePlans } from "./_pricing/normalize";
@@ -60,6 +61,8 @@ export default function PricingPage() {
 					monthlyEvents={monthlyEvents}
 					setMonthlyEvents={setMonthlyEvents}
 				/>
+
+				<PricingFaq />
 
 				<Footer />
 			</div>

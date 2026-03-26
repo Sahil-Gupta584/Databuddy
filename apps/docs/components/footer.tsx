@@ -8,6 +8,7 @@ import { GDPRIcon } from "./icons/gdpr";
 import { SciFiButton } from "./landing/scifi-btn";
 import { Wordmark } from "./landing/wordmark";
 import { LogoContent } from "./logo";
+import { NewsletterForm } from "./newsletter-form";
 
 export function Footer() {
 	return (
@@ -34,6 +35,12 @@ export function Footer() {
 						<p className="text-muted-foreground text-sm sm:text-base">
 							Privacy-first web analytics without compromising user data.
 						</p>
+						<div className="space-y-1.5 pt-1">
+							<p className="font-medium text-foreground text-xs uppercase tracking-wider">
+								Product updates
+							</p>
+							<NewsletterForm />
+						</div>
 					</div>
 
 					<div className="space-y-4">
