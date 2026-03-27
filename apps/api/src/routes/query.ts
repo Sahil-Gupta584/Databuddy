@@ -657,7 +657,6 @@ async function resolveProjectAccess(
 		(websiteId || scheduleId || linkId
 			? null
 			: (ctx.activeOrganizationId ?? ctx.apiKey?.organizationId ?? null));
-	=
 	if (resolvedOrganizationId) {
 		const hasAccess = await verifyOrganizationAccess(
 			ctx,
