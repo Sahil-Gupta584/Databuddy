@@ -3,6 +3,7 @@
 import { GlobeIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import { useState } from "react";
+import { resolveFaviconCanonicalHost } from "@/lib/favicon-domain";
 
 interface FaviconImageProps {
 	domain: string;
@@ -14,40 +15,6 @@ interface FaviconImageProps {
 
 const hostnameRegex = /^https?:\/\//;
 const wwwRegex = /^www\./;
-
-const FAVICON_DOMAIN_MAP: Record<string, string> = {
-	"framercdn.com": "framer.com",
-	"plugins.framercdn.com": "framer.com",
-	"figma.design": "figma.com",
-	"canva.me": "canva.com",
-	"vercel.app": "vercel.com",
-	"netlify.app": "netlify.com",
-	"pages.dev": "cloudflare.com",
-	"workers.dev": "cloudflare.com",
-	"checkout.stripe.com": "stripe.com",
-	"billing.stripe.com": "stripe.com",
-	"invoice.stripe.com": "stripe.com",
-	"googleadservices.com": "ads.google.com",
-	"googleads.g.doubleclick.net": "ads.google.com",
-	"syndicatedsearch.goog": "ads.google.com",
-	"googlesyndication.com": "ads.google.com",
-};
-
-function getFaviconDomain(hostname: string): string {
-	// Check exact match first
-	if (hostname in FAVICON_DOMAIN_MAP) {
-		return FAVICON_DOMAIN_MAP[hostname];
-	}
-
-	// Check if it's a subdomain of a mapped domain
-	for (const [pattern, canonical] of Object.entries(FAVICON_DOMAIN_MAP)) {
-		if (hostname.endsWith(`.${pattern}`)) {
-			return canonical;
-		}
-	}
-
-	return hostname;
-}
 
 export function FaviconImage({
 	domain,
@@ -66,7 +33,7 @@ export function FaviconImage({
 		.split("?")[0]
 		.split("#")[0];
 
-	const faviconHost = getFaviconDomain(hostname);
+	const faviconHost = resolveFaviconCanonicalHost(hostname);
 
 	const invalid =
 		!hostname ||
