@@ -4,6 +4,7 @@ import {
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
+import { SectionBrandOverlay } from "@/components/logo/section-brand-overlay";
 import { TableContent } from "./table-content";
 import { TableTabs } from "./table-tabs";
 
@@ -35,6 +36,7 @@ interface FullScreenModalProps<TData extends { name: string | number }> {
 	onRowAction?: (row: TData) => void;
 	onRowClick?: (field: string, value: string | number) => void;
 	shareColumnTooltip?: string;
+	showBrand?: boolean;
 }
 
 export function FullScreenModal<TData extends { name: string | number }>({
@@ -53,6 +55,7 @@ export function FullScreenModal<TData extends { name: string | number }>({
 	onRowAction,
 	onRowClick,
 	shareColumnTooltip,
+	showBrand = false,
 }: FullScreenModalProps<TData>) {
 	const currentTabData = tabs?.find((tab) => tab.id === activeTab);
 	const tableData = currentTabData?.data || data || [];
@@ -73,7 +76,7 @@ export function FullScreenModal<TData extends { name: string | number }>({
 	};
 	return (
 		<div className="relative flex h-full w-full flex-col bg-sidebar">
-			<div className="flex items-start justify-between border-sidebar-border border-b bg-sidebar px-3 pt-3 pb-2">
+			<div className="flex items-start justify-between gap-3 border-sidebar-border border-b bg-sidebar px-3 pt-3 pb-2 sm:items-center">
 				<div className="min-w-0 flex-1">
 					{title && (
 						<h3 className="truncate font-semibold text-sidebar-foreground text-sm">
@@ -81,15 +84,16 @@ export function FullScreenModal<TData extends { name: string | number }>({
 						</h3>
 					)}
 					{description && (
-						<p className="mt-0.5 line-clamp-2 text-sidebar-foreground/70 text-xs">
+						<p className="mt-0.5 line-clamp-2 text-pretty text-sidebar-foreground/70 text-xs">
 							{description}
 						</p>
 					)}
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex shrink-0 items-center gap-2">
+					{showBrand ? <SectionBrandOverlay layout="inline" /> : null}
 					<button
 						aria-label="Close full screen"
-						className="ml-2 flex items-center justify-center rounded bg-sidebar-accent/60 p-2 text-sidebar-foreground hover:bg-sidebar-accent"
+						className="flex items-center justify-center rounded bg-sidebar-accent/60 p-2 text-sidebar-foreground hover:bg-sidebar-accent"
 						onClick={onClose}
 						style={{ minWidth: 40, minHeight: 40 }}
 						tabIndex={0}

@@ -18,6 +18,7 @@ import {
 } from "@/components/analytics";
 import { MetricsChartWithAnnotations } from "@/components/charts/metrics-chart-with-annotations";
 import { BrowserIcon, OSIcon } from "@/components/icon";
+import { SectionBrandOverlay } from "@/components/logo/section-brand-overlay";
 import { DataTable } from "@/components/table/data-table";
 import {
 	createMetricColumns,
@@ -941,12 +942,12 @@ export function WebsiteOverviewTab({
 
 			{/* Chart */}
 			<div className="rounded border bg-sidebar">
-				<div className="flex flex-col items-start justify-between gap-3 border-b px-3 py-2.5 sm:flex-row sm:px-4 sm:py-3">
+				<div className="flex flex-row items-start justify-between gap-3 border-b px-3 py-2.5 sm:items-center sm:px-4 sm:py-3">
 					<div className="min-w-0 flex-1">
-						<h2 className="font-semibold text-base text-sidebar-foreground sm:text-lg">
+						<h2 className="text-balance font-semibold text-base text-sidebar-foreground sm:text-lg">
 							Traffic Trends
 						</h2>
-						<p className="text-sidebar-foreground/70 text-xs sm:text-sm">
+						<p className="text-pretty text-sidebar-foreground/70 text-xs sm:text-sm">
 							{dateRange.granularity === "hourly" ? "Hourly" : "Daily"} traffic
 							data
 						</p>
@@ -963,6 +964,7 @@ export function WebsiteOverviewTab({
 							</div>
 						)}
 					</div>
+					<SectionBrandOverlay layout="inline" />
 				</div>
 				<div className="overflow-x-auto">
 					<MetricsChartWithAnnotations
@@ -992,6 +994,7 @@ export function WebsiteOverviewTab({
 					isLoading={isLoading}
 					minHeight={350}
 					onAddFilter={onAddFilter}
+					showBrandInHeader
 					tabs={referrerTabs}
 					title="Traffic Sources"
 				/>
@@ -1001,6 +1004,7 @@ export function WebsiteOverviewTab({
 					isLoading={isLoading}
 					minHeight={350}
 					onAddFilter={onAddFilter}
+					showBrandInHeader
 					tabs={pagesTabs as any}
 					title="Pages"
 				/>

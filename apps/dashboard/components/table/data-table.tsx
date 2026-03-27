@@ -49,6 +49,8 @@ interface DataTableProps<TData extends { name: string | number }, TValue> {
 	expandable?: boolean;
 	/** Native title on Share column; omit for default visitor-share explanation; pass "" to hide. */
 	shareColumnTooltip?: string;
+	/** Primary logo in the card header (e.g. overview screenshots). */
+	showBrandInHeader?: boolean;
 }
 
 const SKELETON_ROW_WIDTHS = ["60%", "45%", "55%", "35%", "50%"] as const;
@@ -91,6 +93,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 	onAddFilter,
 	onRowAction,
 	shareColumnTooltip,
+	showBrandInHeader = false,
 }: DataTableProps<TData, TValue>) {
 	const [activeTab, setActiveTab] = useState(tabs?.[0]?.id || "");
 
@@ -125,6 +128,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 				<TableToolbar
 					borderBottom={!tabs}
 					description={description}
+					showBrand={showBrandInHeader}
 					showFullScreen={false}
 					title={title}
 				/>
@@ -160,6 +164,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 					borderBottom={!tabs}
 					description={description}
 					onFullScreenToggle={() => setFullScreen(true)}
+					showBrand={showBrandInHeader}
 					title={title}
 				/>
 
@@ -222,6 +227,7 @@ export function DataTable<TData extends { name: string | number }, TValue>({
 								onTabChange={handleTabChange}
 								renderSubRow={renderSubRow}
 								shareColumnTooltip={shareColumnTooltip}
+								showBrand={showBrandInHeader}
 								tabs={tabs}
 								title={title}
 							/>
