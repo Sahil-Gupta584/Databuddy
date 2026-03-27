@@ -113,13 +113,13 @@ export function storeAnalyticsSummary(
 	summary: string,
 	websiteId: string,
 	metadata?: Record<string, string>
-): void {
+): Promise<void> {
 	const client = getClient();
 	if (!client) {
-		return;
+		return Promise.resolve();
 	}
 
-	client
+	return client
 		.add({
 			content: summary,
 			containerTags: [`website:${websiteId}`],
@@ -129,7 +129,7 @@ export function storeAnalyticsSummary(
 				...metadata,
 			},
 		})
-		.catch(() => {});
+		.then(() => undefined);
 }
 
 /**

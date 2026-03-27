@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import {
 	loadDismissedIds,
 	saveDismissedIds,
@@ -32,7 +32,7 @@ export function useInsightsLocalState(
 		},
 	});
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!organizationId) {
 			setDismissedIds([]);
 			setHydrated(true);

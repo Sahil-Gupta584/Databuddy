@@ -1,5 +1,7 @@
-import type { Insight } from "@/lib/insight-types";
 import dayjs from "@/lib/dayjs";
+import type { Insight } from "@/lib/insight-types";
+
+const PATH_IN_TEXT = /\/[a-zA-Z0-9][a-zA-Z0-9/_-]*/g;
 
 /** Human-readable comparison window when DB persisted period fields exist. */
 export function formatComparisonWindow(insight: Insight): string | null {
@@ -45,6 +47,16 @@ export function buildInsightShareUrl(insightId: string): string {
 	const url = new URL(window.location.href);
 	url.hash = `insight-${insightId}`;
 	return url.toString();
+}
+
+export function extractInsightPathHint(insight: Insight): string | null {
+	const text = `${insight.title}\n${insight.description}\n${insight.suggestion}`;
+	const matches = text.match(PATH_IN_TEXT);
+	if (!matches?.length) {
+		return null;
+	}
+	const sorted = [...matches].sort((a, b) => b.length - a.length);
+	return sorted[0] ?? null;
 }
 
 export function buildInsightCopyText(insight: Insight): string {

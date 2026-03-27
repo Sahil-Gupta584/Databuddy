@@ -17,12 +17,12 @@ import {
 import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import type {
 	Insight,
 	InsightSentiment,
 	InsightType,
 } from "@/lib/insight-types";
+import { cn } from "@/lib/utils";
 
 function buildDiagnosticPrompt(insight: Insight): string {
 	const parts = [
@@ -301,7 +301,6 @@ function ErrorState({ onRetryAction }: { onRetryAction?: () => void }) {
 interface InsightsSectionProps {
 	insights: Insight[];
 	isLoading?: boolean;
-	showAnalyzing?: boolean;
 	isFetching?: boolean;
 	isFetchingFresh?: boolean;
 	isError?: boolean;
@@ -319,7 +318,6 @@ const cardShell = (variant: "compact" | "full") =>
 export function SmartInsightsSection({
 	insights,
 	isLoading,
-	showAnalyzing,
 	isFetching,
 	isFetchingFresh,
 	isError,
@@ -352,20 +350,6 @@ export function SmartInsightsSection({
 					</div>
 				</div>
 				<ErrorState onRetryAction={onRefreshAction} />
-			</div>
-		);
-	}
-
-	if (showAnalyzing) {
-		return (
-			<div className={cardShell(variant)}>
-				<div className="flex items-center gap-2 border-b px-4 py-3">
-					<SparkleIcon className="size-4 text-primary" weight="duotone" />
-					<h3 className="font-semibold text-foreground text-sm">
-						Actionable Insights
-					</h3>
-				</div>
-				<AnalyzingState />
 			</div>
 		);
 	}

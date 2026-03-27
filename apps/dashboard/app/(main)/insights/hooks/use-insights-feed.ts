@@ -49,15 +49,22 @@ function mergeAiWithHistoryPages(
 
 export function useInsightsFeed() {
 	const queryClient = useQueryClient();
-	const { activeOrganization, activeOrganizationId } =
-		useOrganizationsContext();
+	const {
+		activeOrganization,
+		activeOrganizationId,
+		isLoading: isOrgContextLoading,
+	} = useOrganizationsContext();
 
 	const orgId = activeOrganization?.id ?? activeOrganizationId ?? undefined;
 
 	const historyInfinite = useInfiniteQuery({
 		queryKey: [INSIGHT_QUERY_KEYS.historyInfinite, orgId],
 		queryFn: ({ pageParam }) =>
-			fetchInsightsHistoryPage(orgId ?? "", pageParam as number, HISTORY_PAGE_SIZE),
+			fetchInsightsHistoryPage(
+				orgId ?? "",
+				pageParam as number,
+				HISTORY_PAGE_SIZE
+			),
 		initialPageParam: 0,
 		getNextPageParam: (lastPage, _allPages, lastPageParam) => {
 			if (!lastPage.hasMore) {
@@ -109,33 +116,30 @@ export function useInsightsFeed() {
 		]);
 	}, [queryClient, orgId]);
 
-	const bothPending =
-		historyInfinite.isPending &&
-		aiQuery.isPending &&
-		mergedInsights.length === 0;
-
-	const isInitialLoading = bothPending;
-
-	const showAnalyzing =
-		mergedInsights.length === 0 && aiQuery.isPending && !isInitialLoading;
+	const isInitialLoading =
+		isOrgContextLoading ||
+		Boolean(
+			orgId &&
+				!(historyInfinite.isFetched && aiQuery.isFetched) &&
+				!(historyInfinite.isError && aiQuery.isError)
+		);
 
 	const isError =
 		mergedInsights.length === 0 &&
-		!historyInfinite.isPending &&
-		!aiQuery.isPending &&
+		historyInfinite.isFetched &&
+		aiQuery.isFetched &&
 		(historyInfinite.isError || aiQuery.isError);
 
 	const isFetching = historyInfinite.isFetching || aiQuery.isFetching;
 
-	const isFetchingFresh = mergedInsights.length > 0 && aiQuery.isFetching;
+	const isRefreshing = isFetching && !isInitialLoading;
 
 	return {
 		insights: mergedInsights,
 		source: aiQuery.data?.source ?? null,
 		isLoading: isInitialLoading,
-		showAnalyzing,
+		isRefreshing,
 		isFetching,
-		isFetchingFresh,
 		isError,
 		refetch: refetchAll,
 		fetchNextPage: historyInfinite.fetchNextPage,

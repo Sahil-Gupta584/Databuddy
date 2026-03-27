@@ -35,8 +35,11 @@ function mergeInsights(fresh: Insight[], stored: Insight[]): Insight[] {
 
 export function useSmartInsights() {
 	const queryClient = useQueryClient();
-	const { activeOrganization, activeOrganizationId } =
-		useOrganizationsContext();
+	const {
+		activeOrganization,
+		activeOrganizationId,
+		isLoading: isOrgContextLoading,
+	} = useOrganizationsContext();
 
 	const orgId = activeOrganization?.id ?? activeOrganizationId ?? undefined;
 
@@ -89,21 +92,23 @@ export function useSmartInsights() {
 		]);
 	}, [queryClient, orgId]);
 
-	const bothQueriesPending =
-		historyQuery.isPending && aiQuery.isPending && mergedInsights.length === 0;
-
-	const isInitialLoading = bothQueriesPending;
-
-	const showAnalyzing =
-		mergedInsights.length === 0 && aiQuery.isPending && !isInitialLoading;
+	const isInitialLoading =
+		isOrgContextLoading ||
+		Boolean(
+			orgId &&
+			!(historyQuery.isFetched && aiQuery.isFetched) &&
+			!(historyQuery.isError && aiQuery.isError)
+		);
 
 	const isError =
 		mergedInsights.length === 0 &&
-		!historyQuery.isPending &&
-		!aiQuery.isPending &&
+		historyQuery.isFetched &&
+		aiQuery.isFetched &&
 		(historyQuery.isError || aiQuery.isError);
 
 	const isFetching = historyQuery.isFetching || aiQuery.isFetching;
+
+	const isRefreshing = isFetching && !isInitialLoading;
 
 	const isFetchingFresh = mergedInsights.length > 0 && aiQuery.isFetching;
 
@@ -111,7 +116,7 @@ export function useSmartInsights() {
 		insights: mergedInsights,
 		source: aiQuery.data?.source ?? null,
 		isLoading: isInitialLoading,
-		showAnalyzing,
+		isRefreshing,
 		isFetching,
 		isFetchingFresh,
 		isError,

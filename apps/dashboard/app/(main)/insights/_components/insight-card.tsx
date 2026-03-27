@@ -22,17 +22,14 @@ import {
 import Link from "next/link";
 import { type ReactNode, useMemo } from "react";
 import { toast } from "sonner";
-import type {
-	Insight,
-	InsightSentiment,
-	InsightType,
-} from "@/lib/insight-types";
+import type { InsightFeedbackVote } from "@/app/(main)/insights/lib/insight-feedback-vote";
 import {
 	buildInsightCopyText,
 	buildInsightShareUrl,
+	extractInsightPathHint,
+	formatComparisonWindow,
 	formatInsightFreshness,
 } from "@/app/(main)/insights/lib/insight-meta";
-import type { InsightFeedbackVote } from "@/app/(main)/insights/lib/insight-feedback-vote";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -40,6 +37,11 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import type {
+	Insight,
+	InsightSentiment,
+	InsightType,
+} from "@/lib/insight-types";
 import { cn } from "@/lib/utils";
 
 const TYPE_STYLES: Record<
@@ -136,9 +138,22 @@ function buildDiagnosticPrompt(insight: Insight): string {
 		);
 	}
 
+	const windowLine = formatComparisonWindow(insight);
+	if (windowLine) {
+		parts.push("", `Comparison window: ${windowLine}`);
+	}
+
+	const pathHint = extractInsightPathHint(insight);
+	if (pathHint) {
+		parts.push(
+			"",
+			`Focus on page path ${pathHint} in analytics when relevant.`
+		);
+	}
+
 	parts.push(
 		"",
-		"Investigate the root cause, check the relevant data for the last 7 days, and provide a clear explanation of what's happening and specific steps to fix or improve it."
+		"Investigate the root cause using this site's analytics for the comparison window above, and provide a clear explanation of what's happening and specific steps to fix or improve it."
 	);
 
 	return parts.join("\n");
@@ -170,6 +185,17 @@ export function InsightCard({
 		const prompt = encodeURIComponent(buildDiagnosticPrompt(insight));
 		return `/websites/${insight.websiteId}/agent/${chatId}?prompt=${prompt}`;
 	}, [insight]);
+
+	const pathHint = useMemo(() => extractInsightPathHint(insight), [insight]);
+
+	const analyticsHref = useMemo(() => {
+		if (pathHint) {
+			return `/websites/${insight.websiteId}/events/stream?path=${encodeURIComponent(pathHint)}`;
+		}
+		return insight.link;
+	}, [insight.websiteId, insight.link, pathHint]);
+
+	const analyticsLabel = pathHint ? "View events" : "Overview";
 
 	const copySummaryAction = async () => {
 		try {
@@ -321,10 +347,11 @@ export function InsightCard({
 						role="group"
 					>
 						<Link
+							aria-label="Open AI agent with this insight as context"
 							className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 font-medium text-primary-foreground text-xs transition-opacity hover:opacity-90"
 							href={agentHref}
 						>
-							Investigate
+							Ask agent
 							<ArrowRightIcon className="size-3" weight="fill" />
 						</Link>
 						<button
@@ -336,10 +363,15 @@ export function InsightCard({
 							Copy
 						</button>
 						<Link
+							aria-label={
+								pathHint
+									? `View live events filtered to ${pathHint}`
+									: "Open website overview"
+							}
 							className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-accent hover:text-foreground"
-							href={insight.link}
+							href={analyticsHref}
 						>
-							View analytics
+							{analyticsLabel}
 						</Link>
 
 						<DropdownMenu>

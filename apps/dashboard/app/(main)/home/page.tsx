@@ -83,7 +83,7 @@ export default function HomePage() {
 	const {
 		insights,
 		isLoading: isInsightsLoading,
-		showAnalyzing: isInsightsShowAnalyzing,
+		isRefreshing: isInsightsRefreshing,
 		isFetching: isInsightsFetching,
 		isFetchingFresh: isInsightsFetchingFresh,
 		isError: isInsightsError,
@@ -112,8 +112,7 @@ export default function HomePage() {
 								isFetching ||
 								isPulseLoading ||
 								isPulseFetching ||
-								isInsightsLoading ||
-								isInsightsFetching
+								isInsightsLoading
 							}
 							onClick={handleRefetch}
 							size="icon"
@@ -126,7 +125,7 @@ export default function HomePage() {
 									isLoading ||
 										isFetching ||
 										isPulseFetching ||
-										isInsightsFetching
+										isInsightsRefreshing
 										? "animate-spin"
 										: ""
 								)}
@@ -154,8 +153,8 @@ export default function HomePage() {
 				aria-busy={
 					isFetching ||
 					isPulseFetching ||
-					isInsightsFetching ||
-					isInsightsFetchingFresh
+					isInsightsLoading ||
+					isInsightsRefreshing
 				}
 				className="flex-1 space-y-6 overflow-y-auto p-3 sm:p-4 lg:p-6"
 			>
@@ -180,7 +179,6 @@ export default function HomePage() {
 						isFetchingFresh={isInsightsFetchingFresh}
 						isLoading={isInsightsLoading}
 						onRefreshAction={refetchInsights}
-						showAnalyzing={isInsightsShowAnalyzing}
 					/>
 					<MonitorsSection
 						activeMonitors={activeMonitors}

@@ -19,7 +19,7 @@ import dayjs from "dayjs";
 import { Elysia, t } from "elysia";
 import { useLogger } from "evlog/elysia";
 import { z } from "zod";
-import { gateway } from "../ai/config/models";
+import { models } from "../ai/config/models";
 import { storeAnalyticsSummary } from "../lib/supermemory";
 import { mergeWideEvent } from "../lib/tracing";
 import { executeQuery } from "../query";
@@ -27,27 +27,35 @@ import { executeQuery } from "../query";
 const CACHE_TTL = 900;
 const CACHE_KEY_PREFIX = "ai-insights";
 const TIMEOUT_MS = 60_000;
+const QUERY_FETCH_TIMEOUT_MS = 45_000;
 const MAX_WEBSITES = 5;
 const CONCURRENCY = 3;
 const GENERATION_COOLDOWN_HOURS = 6;
 const RECENT_INSIGHTS_LOOKBACK_DAYS = 14;
 const RECENT_INSIGHTS_PROMPT_LIMIT = 12;
 
+const PATH_SEGMENT_ALNUM = /^[a-zA-Z0-9_-]+$/;
+const DIGIT_CLASS = /\d/;
+const LETTER_CLASS = /[a-zA-Z]/;
+const LOWER_CLASS = /[a-z]/;
+const UPPER_CLASS = /[A-Z]/;
+const DASH_UNDERSCORE_SPLIT = /[-_]/g;
+
 const insightSchema = z.object({
 	title: z
 		.string()
 		.describe(
-			"Brief headline under 60 chars with the key number, e.g. 'Visitors up 23% week-over-week'"
+			"Brief headline under 60 chars with the key number. Never paste raw URL paths that contain opaque ID segments (long random slugs). Use human labels from Top Pages 'Human label' (e.g. 'Demo page', 'Pricing page', 'Home') instead of paths like /demo/xYz12…"
 		),
 	description: z
 		.string()
 		.describe(
-			"2-3 sentences: what changed and why it might matter, with specific numbers from BOTH periods. Explain cause only when grounded in the data or annotations."
+			"2-4 complete sentences with specific numbers from BOTH periods; end with a full stop. Do not truncate mid-sentence or end with '...'. Name pages using human labels when the path has opaque IDs. Explain cause only when grounded in the data or annotations."
 		),
 	suggestion: z
 		.string()
 		.describe(
-			"Required prescriptive 'now what': one or two sentences telling the user what to do next (product, marketing, or ops). Tie to the metric (e.g. add a CTA, capture email from volatile channel, prioritize top error). Never generic: no 'monitor', 'keep watching', or 'consider reviewing' without a concrete step."
+			"One or two sentences tied to THIS product's data only: cite concrete figures already in the summary, pages, errors, or referrers (e.g. two page paths, two visitor counts, or bounce/session metrics from the data). Do not give generic marketing platitudes or hypothetical tactics; if you recommend a CTA or experiment, anchor it to numbers you stated above. Bad: vague 'social proof' or 'limited-time offer' without data. Good: references actual pageviews, visitors, or rates from the prompt."
 		),
 	severity: z.enum(["critical", "warning", "info"]),
 	sentiment: z
@@ -88,7 +96,7 @@ const insightsOutputSchema = z.object({
 		.array(insightSchema)
 		.max(3)
 		.describe(
-			"1-3 insights ranked by actionability × business impact. Skip repeating a narrative already listed under recently reported insights unless the change is materially new."
+			"1-3 insights ranked by actionability × business impact. When the week is mostly positive, at least one insight MUST still call out a material risk or watch (e.g. session duration down, bounce up, single-channel dependency, volatile referrer, error count up in absolute terms) if those signals appear in the data—do not only celebrate wins. Skip repeating a narrative already listed under recently reported insights unless the change is materially new."
 		),
 });
 
@@ -119,6 +127,185 @@ interface WeekOverWeekPeriod {
 	previous: { from: string; to: string };
 }
 
+interface OrgWebsiteRow {
+	id: string;
+	name: string | null;
+	domain: string;
+}
+
+function humanizeMetricKey(key: string): string {
+	return key.replaceAll("_", " ").replaceAll(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatMetricValue(value: unknown): string {
+	if (value === null || value === undefined) {
+		return "";
+	}
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? String(value) : value.toFixed(2);
+	}
+	if (typeof value === "boolean") {
+		return value ? "yes" : "no";
+	}
+	if (typeof value === "string") {
+		return value;
+	}
+	return JSON.stringify(value);
+}
+
+function formatObjectLine(record: Record<string, unknown>): string {
+	return Object.entries(record)
+		.filter(([, v]) => v !== null && v !== undefined)
+		.map(([k, v]) => `${humanizeMetricKey(k)}: ${formatMetricValue(v)}`)
+		.join(" | ");
+}
+
+function formatRowsBlock(
+	rows: Record<string, unknown>[],
+	sectionTitle: string
+): string {
+	if (rows.length === 0) {
+		return "";
+	}
+	const lines = rows.map((row) => formatObjectLine(row));
+	return `### ${sectionTitle}\n${lines.join("\n")}`;
+}
+
+function isOpaquePathSegment(segment: string): boolean {
+	if (segment.length < 8) {
+		return false;
+	}
+	if (!PATH_SEGMENT_ALNUM.test(segment)) {
+		return false;
+	}
+	const hasDigit = DIGIT_CLASS.test(segment);
+	const hasLetter = LETTER_CLASS.test(segment);
+	if (segment.length >= 16) {
+		return hasLetter || hasDigit;
+	}
+	return hasDigit || (LOWER_CLASS.test(segment) && UPPER_CLASS.test(segment));
+}
+
+function titleCasePathWords(segment: string): string {
+	return segment
+		.replaceAll(DASH_UNDERSCORE_SPLIT, " ")
+		.split(" ")
+		.filter(Boolean)
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+		.join(" ");
+}
+
+/** Readable page name for titles; raw path may still appear in data rows for accuracy. */
+function humanizePagePathForPrompt(rawPath: string): string {
+	const path = rawPath.trim() || "/";
+	if (path === "/" || path === "") {
+		return "Home";
+	}
+	const segments = path.split("/").filter(Boolean);
+	const last = segments.at(-1) ?? "";
+	if (isOpaquePathSegment(last) && segments.length >= 2) {
+		const parent = segments.at(-2) ?? "";
+		if (parent && !isOpaquePathSegment(parent)) {
+			return `${titleCasePathWords(parent)} page`;
+		}
+		return "Page";
+	}
+	if (isOpaquePathSegment(last)) {
+		return "Page";
+	}
+	return `${titleCasePathWords(last)} page`;
+}
+
+function formatTopPagesBlock(rows: Record<string, unknown>[]): string {
+	if (rows.length === 0) {
+		return "";
+	}
+	const lines = rows.map((row) => {
+		const rawName =
+			typeof row.name === "string" ? row.name : String(row.name ?? "");
+		const human = humanizePagePathForPrompt(rawName);
+		const base = formatObjectLine(row);
+		return `${base} | Human label (use in titles, not raw paths with IDs): ${human}`;
+	});
+	return `### Top Pages\n${lines.join("\n")}`;
+}
+
+function directionKeyFromParts(
+	changePercent: number | null | undefined,
+	sentiment: ParsedInsight["sentiment"]
+): "up" | "down" | "flat" {
+	if (
+		changePercent !== null &&
+		changePercent !== undefined &&
+		changePercent !== 0
+	) {
+		return changePercent > 0 ? "up" : "down";
+	}
+	if (sentiment === "positive") {
+		return "up";
+	}
+	if (sentiment === "negative") {
+		return "down";
+	}
+	return "flat";
+}
+
+function insightDedupeKey(
+	websiteId: string,
+	type: ParsedInsight["type"],
+	sentiment: ParsedInsight["sentiment"],
+	changePercent: number | null | undefined
+): string {
+	const dir = directionKeyFromParts(changePercent, sentiment);
+	return `${websiteId}|${type}|${dir}`;
+}
+
+async function fetchInsightDedupeKeys(
+	organizationId: string
+): Promise<Set<string>> {
+	const cutoff = dayjs().subtract(GENERATION_COOLDOWN_HOURS, "hour").toDate();
+	const rows = await db
+		.select({
+			websiteId: analyticsInsights.websiteId,
+			type: analyticsInsights.type,
+			sentiment: analyticsInsights.sentiment,
+			changePercent: analyticsInsights.changePercent,
+		})
+		.from(analyticsInsights)
+		.where(
+			and(
+				eq(analyticsInsights.organizationId, organizationId),
+				gte(analyticsInsights.createdAt, cutoff)
+			)
+		);
+	const keys = new Set<string>();
+	for (const r of rows) {
+		keys.add(
+			insightDedupeKey(
+				r.websiteId,
+				r.type as ParsedInsight["type"],
+				r.sentiment as ParsedInsight["sentiment"],
+				r.changePercent
+			)
+		);
+	}
+	return keys;
+}
+
+function runQueryWithTimeout<T>(
+	label: string,
+	fn: () => Promise<T>
+): Promise<T> {
+	return Promise.race([
+		fn(),
+		new Promise<never>((_, reject) => {
+			setTimeout(() => {
+				reject(new Error(`${label} timed out`));
+			}, QUERY_FETCH_TIMEOUT_MS);
+		}),
+	]);
+}
+
 function getWeekOverWeekPeriod(): WeekOverWeekPeriod {
 	const now = dayjs();
 	return {
@@ -142,23 +329,45 @@ async function fetchPeriodData(
 ): Promise<PeriodData> {
 	const base = { projectId: websiteId, from, to, timezone };
 
-	const [summary, topPages, errorSummary, topReferrers] =
-		await Promise.allSettled([
-			executeQuery({ ...base, type: "summary_metrics" }, domain, timezone),
-			executeQuery({ ...base, type: "top_pages", limit: 10 }, domain, timezone),
-			executeQuery({ ...base, type: "error_summary" }, domain, timezone),
+	const safe = async (
+		label: string,
+		run: () => Promise<Record<string, unknown>[]>
+	): Promise<Record<string, unknown>[]> => {
+		try {
+			const value = await runQueryWithTimeout(label, run);
+			return Array.isArray(value) ? value : [];
+		} catch (error) {
+			useLogger().warn("Insights period query failed or timed out", {
+				insights: { websiteId, label, error },
+			});
+			return [];
+		}
+	};
+
+	const [summary, topPages, errorSummary, topReferrers] = await Promise.all([
+		safe("summary_metrics", () =>
+			executeQuery({ ...base, type: "summary_metrics" }, domain, timezone)
+		),
+		safe("top_pages", () =>
+			executeQuery({ ...base, type: "top_pages", limit: 10 }, domain, timezone)
+		),
+		safe("error_summary", () =>
+			executeQuery({ ...base, type: "error_summary" }, domain, timezone)
+		),
+		safe("top_referrers", () =>
 			executeQuery(
 				{ ...base, type: "top_referrers", limit: 10 },
 				domain,
 				timezone
-			),
-		]);
+			)
+		),
+	]);
 
 	return {
-		summary: summary.status === "fulfilled" ? summary.value : [],
-		topPages: topPages.status === "fulfilled" ? topPages.value : [],
-		errorSummary: errorSummary.status === "fulfilled" ? errorSummary.value : [],
-		topReferrers: topReferrers.status === "fulfilled" ? topReferrers.value : [],
+		summary,
+		topPages,
+		errorSummary,
+		topReferrers,
 	};
 }
 
@@ -173,29 +382,32 @@ function formatDataForPrompt(
 	sections.push(
 		`## Current Period (${currentRange.from} to ${currentRange.to})`
 	);
-	sections.push(`### Summary\n${JSON.stringify(current.summary)}`);
+	sections.push(formatRowsBlock(current.summary, "Summary"));
 	if (current.topPages.length > 0) {
-		sections.push(`### Top Pages\n${JSON.stringify(current.topPages)}`);
+		sections.push(formatTopPagesBlock(current.topPages));
 	}
 	if (current.errorSummary.length > 0) {
-		sections.push(`### Errors\n${JSON.stringify(current.errorSummary)}`);
+		sections.push(formatRowsBlock(current.errorSummary, "Errors"));
 	}
 	if (current.topReferrers.length > 0) {
-		sections.push(`### Top Referrers\n${JSON.stringify(current.topReferrers)}`);
+		sections.push(formatRowsBlock(current.topReferrers, "Top Referrers"));
 	}
 
 	sections.push(
 		`\n## Previous Period (${previousRange.from} to ${previousRange.to})`
 	);
-	sections.push(`### Summary\n${JSON.stringify(previous.summary)}`);
+	sections.push(formatRowsBlock(previous.summary, "Summary"));
 	if (previous.topPages.length > 0) {
-		sections.push(`### Top Pages\n${JSON.stringify(previous.topPages)}`);
+		sections.push(formatTopPagesBlock(previous.topPages));
 	}
 	if (previous.errorSummary.length > 0) {
-		sections.push(`### Errors\n${JSON.stringify(previous.errorSummary)}`);
+		sections.push(formatRowsBlock(previous.errorSummary, "Errors"));
+	}
+	if (previous.topReferrers.length > 0) {
+		sections.push(formatRowsBlock(previous.topReferrers, "Top Referrers"));
 	}
 
-	return sections.join("\n\n");
+	return sections.filter(Boolean).join("\n\n");
 }
 
 async function fetchRecentAnnotations(websiteId: string): Promise<string> {
@@ -266,6 +478,32 @@ async function fetchRecentInsightsForPrompt(
 	return `\n\n## Recently reported insights for this website (avoid repeating the same narrative unless something materially changed)\n${lines.join("\n")}`;
 }
 
+function formatOrgWebsitesContext(
+	orgSites: OrgWebsiteRow[],
+	currentWebsiteId: string
+): string {
+	if (orgSites.length <= 1) {
+		return "";
+	}
+	const sorted = [...orgSites].sort((a, b) =>
+		a.domain.localeCompare(b.domain, "en")
+	);
+	const lines = sorted.map((s) => {
+		const label = s.name?.trim() ? s.name.trim() : s.domain;
+		const marker =
+			s.id === currentWebsiteId
+				? " — **metrics below are for this site only**"
+				: "";
+		return `- ${label} (${s.domain})${marker}`;
+	});
+	return `## Organization websites (same account, separate analytics)
+Each row is a different tracked property (e.g. marketing site vs app vs docs). The week-over-week metrics in this message apply only to the site marked "metrics below". Do not blend numbers across rows. If referrers include another domain from this list, treat it as cross-property traffic (e.g. landing → product) and name both sides clearly.
+
+${lines.join("\n")}
+
+`;
+}
+
 const INSIGHTS_SYSTEM_PROMPT = `You are an analytics insights engine. Your job is to find the 1-3 most significant findings from week-over-week website data, written like an analyst: descriptive where needed, but every insight MUST include a prescriptive "so what / now what" in the suggestion field.
 
 Priority scoring (priority 1-10):
@@ -284,13 +522,23 @@ Anti-redundancy:
 - If the user message includes a "Recently reported insights" section, treat those as already surfaced. Do NOT output a new insight that tells the same story (same underlying signal and direction) unless the narrative would be materially different (e.g. new root cause, reversal, or threshold crossed). Prefer novel angles or omit.
 
 Data boundaries:
-- Only use metrics present in the JSON (summary, pages, errors, referrers). Do not invent funnel conversion rates, MRR, revenue, cohort retention, or signup counts unless they appear in the data.
+- Only use metrics present in the summary, pages, errors, and referrers sections. Do not invent funnel conversion rates, MRR, revenue, cohort retention, or signup counts unless they appear in the data.
 - If conversion or goal data appears in summary_metrics, you may connect traffic to outcomes. If absent, do not fabricate funnel or revenue insights.
 
+Multi-property organizations:
+- When the user message includes "Organization websites", each bullet is a separate site in the same account. Titles and descriptions MUST name which property (domain or product label from the list) the insight applies to—do not assume the reader knows which site is "app" vs marketing.
+- Referrers that appear as another domain in that list are cross-site traffic: explain the relationship (e.g. www → app) instead of treating them like generic external referrers.
+
 Suggestion field (required quality):
-- Must answer "what should we do next?" in one or two sentences: concrete product, marketing, or engineering action tied to the numbers.
-- Bad: "Monitor traffic", "Keep an eye on this", "Consider reviewing analytics."
-- Good: tie to pages, channels, CTAs, error classes, or experiments suggested by the data.
+- Must answer "what should we do next?" in one or two sentences grounded in the actual metrics shown (repeat or reference specific counts, rates, or page labels from the data). This is an analytics product—avoid generic marketing coaching ("social proof", "limited-time offer") unless you tie it to a concrete gap in the numbers (e.g. two paths' visitor counts, bounce rate, session duration).
+- Bad: "Monitor traffic", "Keep an eye on this", "Consider reviewing analytics", vague growth tactics without figures.
+- Good: tie to pages, channels, CTAs, error classes, or experiments using numbers already in the prompt.
+
+Titles and page paths:
+- Never put raw URL paths with opaque ID segments in the title (no long random slugs). Use the Human label from Top Pages (e.g. "Demo page", "Pricing page").
+
+Balanced weeks (mostly positive metrics):
+- Still surface at least one insight that highlights a downside risk or watch item when the data supports it: e.g. median session duration down, bounce up, errors up in absolute count, heavy reliance on one volatile referrer or channel. If you only report wins when those signals exist, you are failing the user.
 
 Rules:
 - Every insight MUST include specific numbers from both periods where applicable.
@@ -304,7 +552,8 @@ async function analyzeWebsite(
 	websiteId: string,
 	domain: string,
 	timezone: string,
-	period: WeekOverWeekPeriod
+	period: WeekOverWeekPeriod,
+	orgSites: OrgWebsiteRow[]
 ): Promise<ParsedInsight[]> {
 	const currentRange = period.current;
 	const previousRange = period.previous;
@@ -341,15 +590,17 @@ async function analyzeWebsite(
 		previousRange
 	);
 
-	const prompt = `Analyze this website's week-over-week data and return insights.\n\n${dataSection}${annotationContext}${recentInsightsBlock}`;
+	const orgContext = formatOrgWebsitesContext(orgSites, websiteId);
+	const prompt = `Analyze this website's week-over-week data and return insights.\n\n${orgContext}${dataSection}${annotationContext}${recentInsightsBlock}`;
 
 	try {
 		const result = await generateText({
-			model: gateway.chat("anthropic/claude-opus-4.6"),
+			model: models.analytics,
 			output: Output.object({ schema: insightsOutputSchema }),
 			system: INSIGHTS_SYSTEM_PROMPT,
 			prompt,
 			temperature: 0.2,
+			maxOutputTokens: 8192,
 			abortSignal: AbortSignal.timeout(TIMEOUT_MS),
 			experimental_telemetry: {
 				isEnabled: true,
@@ -388,19 +639,25 @@ async function processInBatches<T, R>(
 	limit: number
 ): Promise<R[]> {
 	const results: R[] = [];
-	const pending = [...items];
+	let nextIndex = 0;
 
-	async function run() {
-		while (pending.length > 0) {
-			const item = pending.shift();
-			if (item !== undefined) {
-				results.push(await action(item));
+	async function worker() {
+		while (true) {
+			const index = nextIndex;
+			nextIndex += 1;
+			if (index >= items.length) {
+				break;
 			}
+			const item = items[index];
+			if (item === undefined) {
+				break;
+			}
+			results.push(await action(item));
 		}
 	}
 
 	await Promise.all(
-		Array.from({ length: Math.min(limit, items.length) }, () => run())
+		Array.from({ length: Math.min(limit, items.length) }, () => worker())
 	);
 	return results;
 }
@@ -492,8 +749,10 @@ async function invalidateInsightsCacheForOrg(
 				await redis.del(...keys);
 			}
 		} while (cursor !== "0");
-	} catch {
-		// cache best-effort
+	} catch (error) {
+		useLogger().info("Insights cache invalidation scan failed (best-effort)", {
+			insights: { organizationId, error },
+		});
 	}
 }
 
@@ -711,8 +970,13 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 						const payload = JSON.parse(cached) as InsightsPayload;
 						return { success: true, ...payload };
 					}
-				} catch {
-					// proceed without cache
+				} catch (error) {
+					useLogger().info(
+						"Insights cache read failed; continuing without cache",
+						{
+							insights: { error },
+						}
+					);
 				}
 			}
 
@@ -752,7 +1016,7 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				return { success: true, ...payload };
 			}
 
-			const sites = await db.query.websites.findMany({
+			const orgSites = await db.query.websites.findMany({
 				where: and(
 					eq(websites.organizationId, organizationId),
 					isNull(websites.deletedAt)
@@ -760,15 +1024,16 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				columns: { id: true, name: true, domain: true },
 			});
 
-			if (sites.length === 0) {
+			if (orgSites.length === 0) {
 				mergeWideEvent({ insights_websites: 0 });
 				return { success: true, insights: [], source: "ai" };
 			}
 
 			try {
 				const period = getWeekOverWeekPeriod();
+				const dedupeKeys = await fetchInsightDedupeKeys(organizationId);
 				const groups = await processInBatches(
-					sites.slice(0, MAX_WEBSITES),
+					orgSites.slice(0, MAX_WEBSITES),
 					async (site: { id: string; name: string | null; domain: string }) => {
 						const results = await analyzeWebsite(
 							organizationId,
@@ -776,12 +1041,13 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 							site.id,
 							site.domain,
 							timezone,
-							period
+							period,
+							orgSites
 						);
 						return results.map(
-							(insight, i): WebsiteInsight => ({
+							(insight): WebsiteInsight => ({
 								...insight,
-								id: `${site.id}-${i}`,
+								id: crypto.randomUUID(),
 								websiteId: site.id,
 								websiteName: site.name,
 								websiteDomain: site.domain,
@@ -792,16 +1058,31 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 					CONCURRENCY
 				);
 
-				const sorted = groups
-					.flat()
-					.sort((a, b) => b.priority - a.priority)
-					.slice(0, 10);
+				const merged = groups.flat().sort((a, b) => b.priority - a.priority);
+				const seen = new Set(dedupeKeys);
+				const sorted: WebsiteInsight[] = [];
+				for (const insight of merged) {
+					const key = insightDedupeKey(
+						insight.websiteId,
+						insight.type,
+						insight.sentiment,
+						insight.changePercent ?? null
+					);
+					if (seen.has(key)) {
+						continue;
+					}
+					seen.add(key);
+					sorted.push(insight);
+					if (sorted.length >= 10) {
+						break;
+					}
+				}
 
 				const runId = crypto.randomUUID();
 				let finalInsights: WebsiteInsight[] = sorted;
 				if (sorted.length > 0) {
 					const rows = sorted.map((insight) => ({
-						id: crypto.randomUUID(),
+						id: insight.id,
 						organizationId,
 						websiteId: insight.websiteId,
 						runId,
@@ -826,15 +1107,12 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 						useLogger().warn("Failed to persist analytics insights", {
 							insights: { organizationId, error },
 						});
+						finalInsights = [];
+						mergeWideEvent({ insights_persist_failed: true });
 					}
-
-					finalInsights = sorted.map((insight, i) => {
-						const row = rows[i];
-						return row ? { ...insight, id: row.id } : insight;
-					});
 				}
 
-				for (const site of sites.slice(0, MAX_WEBSITES)) {
+				for (const site of orgSites.slice(0, MAX_WEBSITES)) {
 					const siteInsights = finalInsights.filter(
 						(s) => s.websiteId === site.id
 					);
@@ -849,7 +1127,11 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 							`Weekly insights for ${site.domain} (${dayjs().format("YYYY-MM-DD")}):\n${summary}`,
 							site.id,
 							{ period: "weekly" }
-						);
+						).catch((error: unknown) => {
+							useLogger().warn("Failed to store analytics summary", {
+								insights: { websiteId: site.id, error },
+							});
+						});
 					}
 				}
 
@@ -889,6 +1171,6 @@ export const insights = new Elysia({ prefix: "/v1/insights" })
 				organizationId: t.String(),
 				timezone: t.Optional(t.String()),
 			}),
-			idleTimeout: 120_000,
+			idleTimeout: 240_000,
 		}
 	);

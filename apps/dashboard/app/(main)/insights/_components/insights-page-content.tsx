@@ -14,10 +14,6 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type {
-	Insight,
-	InsightSeverity,
-} from "@/lib/insight-types";
 import { useInsightsFeed } from "@/app/(main)/insights/hooks/use-insights-feed";
 import { useInsightsLocalState } from "@/app/(main)/insights/hooks/use-insights-local-state";
 import { PageHeader } from "@/app/(main)/websites/_components/page-header";
@@ -43,10 +39,13 @@ import {
 import {
 	clearInsightsHistory,
 	INSIGHT_QUERY_KEYS,
+	type InsightsAiResponse,
+	type InsightsHistoryPage,
 } from "@/lib/insight-api";
+import type { Insight, InsightSeverity } from "@/lib/insight-types";
 import { orpc } from "@/lib/orpc";
 import { cn } from "@/lib/utils";
-import { InsightCard, InsightCardSkeleton } from "./insight-card";
+import { InsightCard } from "./insight-card";
 
 type SeverityFilter = "all" | InsightSeverity;
 type SortMode = "priority" | "newest" | "change";
@@ -94,9 +93,7 @@ export function InsightsPageContent() {
 	const {
 		insights,
 		isLoading,
-		showAnalyzing,
-		isFetching,
-		isFetchingFresh,
+		isRefreshing,
 		isError,
 		refetch,
 		fetchNextPage,
@@ -131,20 +128,33 @@ export function InsightsPageContent() {
 			setClearDialogOpen(false);
 			setExpandedId(null);
 			clearAllDismissedAction();
-			await Promise.all([
-				queryClient.invalidateQueries({
-					queryKey: [INSIGHT_QUERY_KEYS.historyInfinite, orgId],
-				}),
-				queryClient.invalidateQueries({
-					queryKey: [INSIGHT_QUERY_KEYS.ai, orgId],
-				}),
-				queryClient.invalidateQueries({
-					queryKey: [INSIGHT_QUERY_KEYS.history, orgId],
-				}),
-				queryClient.invalidateQueries({
+			if (orgId) {
+				const emptyAi: InsightsAiResponse = {
+					success: true,
+					insights: [],
+					source: "ai",
+				};
+				const emptyHistoryPage: InsightsHistoryPage = {
+					success: true,
+					insights: [],
+					hasMore: false,
+				};
+				queryClient.setQueryData<InsightsAiResponse>(
+					[INSIGHT_QUERY_KEYS.ai, orgId],
+					emptyAi
+				);
+				queryClient.setQueryData([INSIGHT_QUERY_KEYS.historyInfinite, orgId], {
+					pages: [emptyHistoryPage],
+					pageParams: [0],
+				});
+				queryClient.setQueryData<InsightsHistoryPage>(
+					[INSIGHT_QUERY_KEYS.history, orgId],
+					emptyHistoryPage
+				);
+				await queryClient.invalidateQueries({
 					queryKey: orpc.insights.getVotes.key(),
-				}),
-			]);
+				});
+			}
 			toast.success(
 				data.deleted === 0
 					? "No stored insights to remove"
@@ -182,7 +192,14 @@ export function InsightsPageContent() {
 			return true;
 		});
 		return sortInsights(filtered, sortMode);
-	}, [insights, severityFilter, websiteFilter, dismissedIdSet, showDismissed, sortMode]);
+	}, [
+		insights,
+		severityFilter,
+		websiteFilter,
+		dismissedIdSet,
+		showDismissed,
+		sortMode,
+	]);
 
 	const counts = useMemo(
 		() => ({
@@ -194,7 +211,8 @@ export function InsightsPageContent() {
 		[insights]
 	);
 
-	const busy = isLoading || isFetching;
+	const controlsLocked =
+		isLoading || clearInsightsMutation.isPending || isFetchingNextPage;
 	const hasActiveFilters = severityFilter !== "all" || websiteFilter !== "all";
 
 	const clearFilters = () => {
@@ -241,323 +259,332 @@ export function InsightsPageContent() {
 	}, []);
 
 	useEffect(() => {
-		if (hasScrolledToHash.current || !hydrated || isLoading || filteredInsights.length === 0) {
+		if (
+			hasScrolledToHash.current ||
+			!hydrated ||
+			isLoading ||
+			filteredInsights.length === 0
+		) {
 			return;
 		}
 		hasScrolledToHash.current = true;
 		scrollToHashInsight();
 	}, [hydrated, isLoading, filteredInsights.length, scrollToHashInsight]);
 
-	const showFilterBar = !isLoading && !isError && insights.length > 0;
+	const showFilterBar = !(isLoading || isError) && insights.length > 0;
 
 	return (
 		<>
-		<div className="h-full overflow-y-auto" ref={scrollRef}>
-			<PageHeader
-				count={isLoading ? undefined : insights.length}
-				description="Week-over-week AI analysis across all your websites"
-				icon={<SparkleIcon weight="duotone" />}
-				right={
-					<div className="flex items-center gap-2">
-						{websites.length > 1 && (
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										className="min-w-[140px] justify-between"
-										disabled={busy}
-										variant="outline"
-									>
-										<span className="truncate">{selectedWebsiteName}</span>
-										<CaretDownIcon className="ml-2 size-4" weight="fill" />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="w-[200px]">
-									<DropdownMenuItem onClick={() => setWebsiteFilter("all")}>
-										All Websites
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-									{websites.map((w) => (
-										<DropdownMenuItem
-											key={w.id}
-											onClick={() => setWebsiteFilter(w.id)}
+			<div className="h-full overflow-y-auto" ref={scrollRef}>
+				<PageHeader
+					count={isLoading ? undefined : insights.length}
+					description="Week-over-week AI analysis across all your websites"
+					icon={<SparkleIcon weight="duotone" />}
+					right={
+						<div className="flex items-center gap-2">
+							{websites.length > 1 && (
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button
+											className="min-w-[140px] justify-between"
+											disabled={controlsLocked}
+											variant="outline"
 										>
-											{w.name}
+											<span className="truncate">{selectedWebsiteName}</span>
+											<CaretDownIcon className="ml-2 size-4" weight="fill" />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end" className="w-[200px]">
+										<DropdownMenuItem onClick={() => setWebsiteFilter("all")}>
+											All Websites
 										</DropdownMenuItem>
-									))}
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)}
-						<Button
-							aria-label="Refresh insights"
-							disabled={busy}
-							onClick={() => refetch()}
-							size="icon"
-							type="button"
-							variant="secondary"
-						>
-							<ArrowClockwiseIcon
-								aria-hidden
-								className={cn("size-4", busy && "animate-spin")}
-							/>
-						</Button>
-						<Button
-							disabled={!orgId || clearInsightsMutation.isPending}
-							onClick={() => setClearDialogOpen(true)}
-							type="button"
-							variant="outline"
-						>
-							<TrashIcon className="size-4" weight="duotone" />
-							Clear all
-						</Button>
-					</div>
-				}
-				title="Insights"
-			/>
-
-			{showFilterBar && (
-				<div className="flex items-center gap-2 border-b px-4 py-2 sm:px-6">
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<button
-								className={cn(
-									"flex items-center gap-1.5 rounded px-2 py-1 font-medium text-xs transition-colors",
-									severityFilter === "all"
-										? "text-muted-foreground hover:text-foreground"
-										: "bg-primary/10 text-primary"
-								)}
-								type="button"
-							>
-								<FunnelIcon className="size-3.5" />
-								{selectedSeverityLabel}
-								<CaretDownIcon className="size-3" weight="fill" />
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="start">
-							{SEVERITY_OPTIONS.map((opt) => {
-								const count =
-									opt.value === "all" ? counts.total : counts[opt.value];
-								if (opt.value !== "all" && count === 0) {
-									return null;
-								}
-								return (
-									<DropdownMenuItem
-										key={opt.value}
-										onClick={() => setSeverityFilter(opt.value)}
-									>
-										<span className="flex-1">{opt.label}</span>
-										<span className="font-mono text-muted-foreground text-xs tabular-nums">
-											{count}
-										</span>
-									</DropdownMenuItem>
-								);
-							})}
-						</DropdownMenuContent>
-					</DropdownMenu>
-
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<button
-								className="flex items-center gap-1.5 rounded px-2 py-1 font-medium text-muted-foreground text-xs transition-colors hover:text-foreground"
-								type="button"
-							>
-								<ArrowsDownUpIcon className="size-3.5" />
-								{selectedSortLabel}
-								<CaretDownIcon className="size-3" weight="fill" />
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="start">
-							{SORT_OPTIONS.map((opt) => (
-								<DropdownMenuItem
-									key={opt.value}
-									onClick={() => setSortMode(opt.value)}
-								>
-									{opt.label}
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
-
-					{dismissedIdSet.size > 0 && (
-						<button
-							className={cn(
-								"text-xs transition-colors",
-								showDismissed
-									? "font-medium text-foreground"
-									: "text-muted-foreground hover:text-foreground"
+										<DropdownMenuSeparator />
+										{websites.map((w) => (
+											<DropdownMenuItem
+												key={w.id}
+												onClick={() => setWebsiteFilter(w.id)}
+											>
+												{w.name}
+											</DropdownMenuItem>
+										))}
+									</DropdownMenuContent>
+								</DropdownMenu>
 							)}
-							onClick={() => setShowDismissed((v) => !v)}
-							type="button"
-						>
-							{showDismissed
-								? "Hide dismissed"
-								: `Show dismissed (${dismissedIdSet.size})`}
-						</button>
-					)}
-
-					{isFetchingFresh && (
-						<span className="ml-auto text-muted-foreground text-xs">Updating…</span>
-					)}
-
-					{hasActiveFilters && (
-						<button
-							className={cn(
-								"flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground",
-								!isFetchingFresh && "ml-auto"
-							)}
-							onClick={clearFilters}
-							type="button"
-						>
-							<XIcon className="size-3" />
-							Clear
-						</button>
-					)}
-				</div>
-			)}
-
-			{isLoading && (
-				<>
-					<div className="flex items-center gap-3 border-b px-4 py-4 sm:px-6">
-						<SparkleIcon
-							className="size-4 animate-pulse text-primary"
-							weight="duotone"
-						/>
-						<div>
-							<p className="font-medium text-foreground text-sm">
-								Analyzing your websites…
-							</p>
-							<p className="text-muted-foreground text-xs">
-								Databunny is comparing week-over-week data
-							</p>
-						</div>
-					</div>
-					<InsightCardSkeleton />
-					<InsightCardSkeleton />
-					<InsightCardSkeleton />
-				</>
-			)}
-
-			{!isLoading && isError && <ErrorState onRetryAction={refetch} />}
-
-			{!(isLoading || isError) && showAnalyzing && (
-				<>
-					<div className="flex items-center gap-3 border-b px-4 py-4 sm:px-6">
-						<SparkleIcon
-							className="size-4 animate-pulse text-primary"
-							weight="duotone"
-						/>
-						<div>
-							<p className="font-medium text-foreground text-sm">
-								Running analysis…
-							</p>
-							<p className="text-muted-foreground text-xs">
-								Checking traffic, errors, and performance across your sites
-							</p>
-						</div>
-					</div>
-					<InsightCardSkeleton />
-					<InsightCardSkeleton />
-				</>
-			)}
-
-			{!(isLoading || isError || showAnalyzing) && (
-				<>
-					{insights.length === 0 && <AllHealthyState />}
-
-					{filteredInsights.length > 0 &&
-						filteredInsights.map((insight) => (
-							<InsightCard
-								expanded={expandedId === insight.id}
-								feedbackVote={feedbackById[insight.id] ?? null}
-								insight={insight}
-								key={insight.id}
-								onDismissAction={() => dismissAction(insight.id)}
-								onFeedbackAction={(vote) =>
-									setFeedbackAction(insight.id, vote)
-								}
-								onToggleAction={() =>
-									setExpandedId((prev) =>
-										prev === insight.id ? null : insight.id
-									)
-								}
-							/>
-						))}
-
-					{insights.length > 0 && filteredInsights.length === 0 && (
-						<NoMatchState
-							onClearAction={clearFilters}
-							onShowDismissedAction={
-								dismissedIdSet.size > 0
-									? () => setShowDismissed(true)
-									: undefined
-							}
-						/>
-					)}
-
-					{hasNextPage && (
-						<div className="flex justify-center border-b py-4">
 							<Button
-								disabled={isFetchingNextPage}
-								onClick={() => fetchNextPage()}
+								aria-label="Refresh insights"
+								disabled={isLoading}
+								onClick={() => refetch()}
+								size="icon"
+								type="button"
+								variant="secondary"
+							>
+								<ArrowClockwiseIcon
+									aria-hidden
+									className={cn("size-4", isRefreshing && "animate-spin")}
+								/>
+							</Button>
+							<Button
+								disabled={!orgId || clearInsightsMutation.isPending}
+								onClick={() => setClearDialogOpen(true)}
 								type="button"
 								variant="outline"
 							>
-								{isFetchingNextPage ? (
-									<>
-										<ArrowClockwiseIcon className="size-4 animate-spin" />
-										Loading…
-									</>
-								) : (
-									"Load more history"
+								<TrashIcon className="size-4" weight="duotone" />
+								Clear all
+							</Button>
+						</div>
+					}
+					title="Insights"
+				/>
+
+				{showFilterBar && (
+					<div className="flex items-center gap-2 border-b px-4 py-2 sm:px-6">
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<button
+									className={cn(
+										"flex items-center gap-1.5 rounded px-2 py-1 font-medium text-xs transition-colors",
+										severityFilter === "all"
+											? "text-muted-foreground hover:text-foreground"
+											: "bg-primary/10 text-primary"
+									)}
+									type="button"
+								>
+									<FunnelIcon className="size-3.5" />
+									{selectedSeverityLabel}
+									<CaretDownIcon className="size-3" weight="fill" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="start">
+								{SEVERITY_OPTIONS.map((opt) => {
+									const count =
+										opt.value === "all" ? counts.total : counts[opt.value];
+									if (opt.value !== "all" && count === 0) {
+										return null;
+									}
+									return (
+										<DropdownMenuItem
+											key={opt.value}
+											onClick={() => setSeverityFilter(opt.value)}
+										>
+											<span className="flex-1">{opt.label}</span>
+											<span className="font-mono text-muted-foreground text-xs tabular-nums">
+												{count}
+											</span>
+										</DropdownMenuItem>
+									);
+								})}
+							</DropdownMenuContent>
+						</DropdownMenu>
+
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<button
+									className="flex items-center gap-1.5 rounded px-2 py-1 font-medium text-muted-foreground text-xs transition-colors hover:text-foreground"
+									type="button"
+								>
+									<ArrowsDownUpIcon className="size-3.5" />
+									{selectedSortLabel}
+									<CaretDownIcon className="size-3" weight="fill" />
+								</button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="start">
+								{SORT_OPTIONS.map((opt) => (
+									<DropdownMenuItem
+										key={opt.value}
+										onClick={() => setSortMode(opt.value)}
+									>
+										{opt.label}
+									</DropdownMenuItem>
+								))}
+							</DropdownMenuContent>
+						</DropdownMenu>
+
+						{dismissedIdSet.size > 0 && (
+							<button
+								className={cn(
+									"text-xs transition-colors",
+									showDismissed
+										? "font-medium text-foreground"
+										: "text-muted-foreground hover:text-foreground"
 								)}
-							</Button>
-						</div>
-					)}
-
-					{hydrated && dismissedIdSet.size > 0 && (
-						<div className="flex justify-center py-6">
-							<Button
-								onClick={clearAllDismissedAction}
+								onClick={() => setShowDismissed((v) => !v)}
 								type="button"
-								variant="ghost"
 							>
-								Clear all dismissed
-							</Button>
-						</div>
-					)}
-				</>
-			)}
-		</div>
+								{showDismissed
+									? "Hide dismissed"
+									: `Show dismissed (${dismissedIdSet.size})`}
+							</button>
+						)}
 
-		<AlertDialog onOpenChange={setClearDialogOpen} open={clearDialogOpen}>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle className="text-balance">
-						Clear all insights?
-					</AlertDialogTitle>
-					<AlertDialogDescription className="text-pretty">
-						This removes every stored insight for this organization from the
-						database. Fresh insights will be generated on the next analysis run.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-					<AlertDialogAction
-						className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						disabled={clearInsightsMutation.isPending || !orgId}
-						onClick={(e) => {
-							e.preventDefault();
-							if (orgId) {
-								clearInsightsMutation.mutate();
-							}
-						}}
-						type="button"
-					>
-						{clearInsightsMutation.isPending ? "Clearing…" : "Clear all"}
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
+						{hasActiveFilters && (
+							<button
+								className="ml-auto flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
+								onClick={clearFilters}
+								type="button"
+							>
+								<XIcon className="size-3" />
+								Clear
+							</button>
+						)}
+					</div>
+				)}
+
+				{isLoading && (
+					<InsightsFetchStatusRow
+						description="Comparing week-over-week traffic, errors, and referrers"
+						title="Loading insights…"
+						variant="initial"
+					/>
+				)}
+
+				{!(isLoading || isError) && isRefreshing && (
+					<InsightsFetchStatusRow
+						description="Refreshing analysis from your data"
+						title="Updating insights…"
+						variant="refresh"
+					/>
+				)}
+
+				{!isLoading && isError && <ErrorState onRetryAction={refetch} />}
+
+				{!(isLoading || isError) && (
+					<>
+						{insights.length === 0 && !isRefreshing && <AllHealthyState />}
+
+						{filteredInsights.length > 0 &&
+							filteredInsights.map((insight) => (
+								<InsightCard
+									expanded={expandedId === insight.id}
+									feedbackVote={feedbackById[insight.id] ?? null}
+									insight={insight}
+									key={insight.id}
+									onDismissAction={() => dismissAction(insight.id)}
+									onFeedbackAction={(vote) =>
+										setFeedbackAction(insight.id, vote)
+									}
+									onToggleAction={() =>
+										setExpandedId((prev) =>
+											prev === insight.id ? null : insight.id
+										)
+									}
+								/>
+							))}
+
+						{insights.length > 0 && filteredInsights.length === 0 && (
+							<NoMatchState
+								onClearAction={clearFilters}
+								onShowDismissedAction={
+									dismissedIdSet.size > 0
+										? () => setShowDismissed(true)
+										: undefined
+								}
+							/>
+						)}
+
+						{hasNextPage && (
+							<div className="flex justify-center border-b py-4">
+								<Button
+									disabled={isFetchingNextPage}
+									onClick={() => fetchNextPage()}
+									type="button"
+									variant="outline"
+								>
+									{isFetchingNextPage ? (
+										<>
+											<ArrowClockwiseIcon className="size-4 animate-spin" />
+											Loading…
+										</>
+									) : (
+										"Load more history"
+									)}
+								</Button>
+							</div>
+						)}
+
+						{hydrated && dismissedIdSet.size > 0 && (
+							<div className="flex justify-center py-6">
+								<Button
+									onClick={clearAllDismissedAction}
+									type="button"
+									variant="ghost"
+								>
+									Clear all dismissed
+								</Button>
+							</div>
+						)}
+					</>
+				)}
+			</div>
+
+			<AlertDialog onOpenChange={setClearDialogOpen} open={clearDialogOpen}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-balance">
+							Clear all insights?
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-pretty">
+							This removes every stored insight for this organization from the
+							database. Fresh insights will be generated on the next analysis
+							run.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							disabled={clearInsightsMutation.isPending || !orgId}
+							onClick={(e) => {
+								e.preventDefault();
+								if (orgId) {
+									clearInsightsMutation.mutate();
+								}
+							}}
+							type="button"
+						>
+							{clearInsightsMutation.isPending ? "Clearing…" : "Clear all"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
+	);
+}
+
+function InsightsFetchStatusRow({
+	title,
+	description,
+	variant,
+}: {
+	title: string;
+	description: string;
+	variant: "initial" | "refresh";
+}) {
+	return (
+		<div
+			aria-live="polite"
+			className="flex h-10 shrink-0 items-center gap-2 border-b px-4 sm:px-6"
+			role="status"
+		>
+			{variant === "refresh" ? (
+				<ArrowClockwiseIcon
+					aria-hidden
+					className="size-4 shrink-0 animate-spin text-primary"
+				/>
+			) : (
+				<SparkleIcon
+					aria-hidden
+					className="size-4 shrink-0 animate-pulse text-primary"
+					weight="duotone"
+				/>
+			)}
+			<div className="min-w-0">
+				<p className="text-pretty font-medium text-foreground text-sm">
+					{title}
+				</p>
+				<p className="sr-only">{description}</p>
+			</div>
+		</div>
 	);
 }
 
