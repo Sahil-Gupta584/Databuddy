@@ -13,6 +13,7 @@ import {
 	TrashIcon,
 } from "@phosphor-icons/react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,13 +39,20 @@ import { useDateFilters } from "@/hooks/use-date-filters";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import { orpc } from "@/lib/orpc";
 import { fromNow, localDayjs } from "@/lib/time";
-import { LatencyChart } from "@/lib/uptime/latency-chart";
 import { UptimeHeatmap } from "@/lib/uptime/uptime-heatmap";
 import {
 	RecentActivity,
 	type RecentActivityCheck,
 	recentActivityCheckKey,
 } from "../../websites/[id]/pulse/_components/recent-activity";
+
+const LatencyChart = dynamic(
+	() =>
+		import("@/lib/uptime/latency-chart").then((m) => ({
+			default: m.LatencyChart,
+		})),
+	{ ssr: false }
+);
 
 const RECENT_CHECKS_PAGE_SIZE = 50;
 

@@ -23,7 +23,7 @@ export default function StatusLayout({
 	return (
 		<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
 			<TooltipProvider>
-				<div className="flex min-h-dvh flex-col bg-background">
+				<div className="flex h-full flex-col overflow-y-auto bg-background">
 					<StatusNavbar />
 
 					<main className="flex-1">

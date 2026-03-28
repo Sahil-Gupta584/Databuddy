@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { getServerRPCClient } from "@/lib/orpc-server";
 import { LastUpdated } from "./_components/last-updated";
 import { MonitorRow } from "./_components/monitor-row";
@@ -9,32 +10,33 @@ interface StatusPageProps {
 	params: Promise<{ slug: string }>;
 }
 
+const getStatusData = cache(async (slug: string) => {
+	const rpc = await getServerRPCClient();
+	return rpc.statusPage.getBySlug({ slug }).catch(() => null);
+});
+
 export async function generateMetadata({
 	params,
 }: StatusPageProps): Promise<Metadata> {
 	const { slug } = await params;
+	const data = await getStatusData(slug);
 
-	try {
-		const rpc = await getServerRPCClient();
-		const data = await rpc.statusPage.getBySlug({ slug });
-
-		return {
-			title: `${data.organization.name} Status`,
-			description: `Real-time system status for ${data.organization.name}`,
-		};
-	} catch {
+	if (!data) {
 		return {
 			title: "Status Page",
 			description: "System status and uptime monitoring",
 		};
 	}
+
+	return {
+		title: `${data.organization.name} Status`,
+		description: `Real-time system status for ${data.organization.name}`,
+	};
 }
 
 export default async function StatusPage({ params }: StatusPageProps) {
 	const { slug } = await params;
-
-	const rpc = await getServerRPCClient();
-	const data = await rpc.statusPage.getBySlug({ slug }).catch(() => null);
+	const data = await getStatusData(slug);
 
 	if (!data) {
 		notFound();

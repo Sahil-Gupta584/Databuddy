@@ -5,12 +5,20 @@ import {
 	MinusCircleIcon,
 	XCircleIcon,
 } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { formatDateOnly, fromNow } from "@/lib/time";
 import { buildUptimeHeatmapDays } from "@/lib/uptime/heatmap-days";
 import { UptimeHeatmapStrip } from "@/lib/uptime/heatmap-strip";
-import { LatencyChart } from "@/lib/uptime/latency-chart";
 import { cn } from "@/lib/utils";
+
+const LatencyChart = dynamic(
+	() =>
+		import("@/lib/uptime/latency-chart").then((m) => ({
+			default: m.LatencyChart,
+		})),
+	{ ssr: false }
+);
 
 interface DailyData {
 	date: string;
