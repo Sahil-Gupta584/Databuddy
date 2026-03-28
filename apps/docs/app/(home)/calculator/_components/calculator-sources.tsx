@@ -5,11 +5,8 @@ export function CalculatorSources() {
 				Sources & methodology
 			</p>
 			<p className="mb-4 text-pretty text-muted-foreground text-xs leading-relaxed sm:text-sm">
-				We frame the slider as{" "}
-				<span className="text-foreground/90">visitor data loss</span> — visits
-				where cookie-based analytics never receives consent — because
-				peer-reviewed work measures consent, rejection, and data coverage, not
-				page bounce rate.
+				<span className="text-foreground/90">Visitor data loss</span> means
+				visits that do not send consent to cookie-based analytics.
 			</p>
 			<div className="space-y-4 text-pretty text-muted-foreground text-xs leading-relaxed sm:text-sm">
 				<div>

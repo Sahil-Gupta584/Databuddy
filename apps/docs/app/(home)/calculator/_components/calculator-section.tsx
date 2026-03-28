@@ -92,7 +92,7 @@ export function CalculatorSection() {
 
 								<InputField
 									displayPercent
-									hint="Share of visits you do not measure in analytics because visitors did not consent (close, ignore, or reject). Peer-reviewed work measures consent and rejection, not page bounce; we map that to data loss. Default 55% sits in the 40–70% band typical of compliant banners."
+									hint="Share of visits that never reach your analytics without consent. Default 55%; yearly range uses 40–70%."
 									id="data-loss"
 									label="Visitor Data Loss Rate"
 									max={0.75}
@@ -209,12 +209,6 @@ export function CalculatorSection() {
 								</div>
 							</div>
 
-							<p className="mt-4 text-pretty text-muted-foreground text-xs">
-								This estimates opportunity cost from published consent and
-								data-loss studies. Real impact varies by site, audience, and
-								banner design.
-							</p>
-
 							<Separator className="my-4" />
 
 							<ShareButtons
@@ -229,10 +223,9 @@ export function CalculatorSection() {
 
 			<div className="mt-4 text-center">
 				<p className="text-pretty text-muted-foreground text-xs">
-					The yearly range uses {formatPercent(VISITOR_DATA_LOSS_RANGE_LOW)}–
-					{formatPercent(VISITOR_DATA_LOSS_RANGE_HIGH)} visitor data loss —
-					aligned with peer-reviewed and industry consent benchmarks (sources
-					below). Databuddy needs no cookies, so no banner.
+					Yearly range: {formatPercent(VISITOR_DATA_LOSS_RANGE_LOW)}–
+					{formatPercent(VISITOR_DATA_LOSS_RANGE_HIGH)} data loss. Sources
+					below. Databuddy needs no cookies.
 				</p>
 			</div>
 		</section>

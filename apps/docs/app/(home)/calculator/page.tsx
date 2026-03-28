@@ -8,7 +8,7 @@ import { ScenariosSection } from "./_components/scenarios-section";
 
 const TITLE = "Cookie Banner Cost Calculator";
 const DESCRIPTION =
-	"Model opportunity cost from cookie-banner visitor data loss using your traffic, visitor-to-paid rate, and revenue per customer — with a 40–70% literature band.";
+	"Estimate opportunity cost from visitor data loss: your traffic, visitor-to-paid rate, revenue per conversion, and a 40–70% range.";
 
 /** Matches defaults: 50k visitors, 55% data loss, 1.5% visitor-to-paid, $50 — ~$248k/yr; ~$11/mo Databuddy at this volume */
 const DEFAULT_OG_PARAMS = "revenue=247500&visitors=50000&cost=11";
@@ -73,22 +73,10 @@ export default function CalculatorPage() {
 					<h1 className="mb-3 text-balance font-bold text-3xl tracking-tight sm:text-4xl lg:text-5xl">
 						Cookie Banner Cost Calculator
 					</h1>
-					<p className="mx-auto max-w-2xl text-balance text-muted-foreground text-sm sm:text-base">
-						<span className="text-foreground/95">
-							Under compliant banners, a large share of visits never appears in
-							cookie-based analytics — often in the{" "}
-							<strong className="font-medium text-foreground">40–70%</strong>{" "}
-							range in published consent and data-coverage work.
-						</span>{" "}
-						{
-							'No peer-reviewed study isolates "banner bounce"; what exists is consent rates, rejection, and loss of measurable data. We model that as a '
-						}
-						<strong className="font-medium text-foreground">
-							visitor data loss rate
-						</strong>
-						{
-							" (default 55%). The outputs estimate opportunity cost from traffic you cannot attribute — not guaranteed revenue."
-						}
+					<p className="mx-auto max-w-2xl text-balance text-pretty text-muted-foreground text-sm sm:text-base">
+						Without consent, those visits do not show up in cookie-based
+						analytics. Model opportunity cost with a visitor data loss rate
+						(default 55%) and a 40–70% sensitivity band on the yearly figure.
 					</p>
 				</header>
 
