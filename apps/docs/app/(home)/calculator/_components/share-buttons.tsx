@@ -29,7 +29,7 @@ function buildTwitterShareUrl(
 		monthlyVisitors,
 		databuddyMonthlyCost
 	);
-	const text = `🍪 My cookie banner is costing me ${formatCurrencyFull(lostRevenueYearly)}/year in opportunity cost. Model yours →`;
+	const text = `🍪 My cookie banner hides a huge share of visitors from analytics — ~${formatCurrencyFull(lostRevenueYearly)}/year in modeled opportunity cost. Model yours →`;
 	const params = new URLSearchParams({ text, url: shareUrl });
 	return `https://x.com/intent/tweet?${params.toString()}`;
 }
@@ -44,7 +44,7 @@ function buildRedditShareUrl(
 		monthlyVisitors,
 		databuddyMonthlyCost
 	);
-	const title = `Cookie banner opportunity cost: ${formatCurrencyFull(lostRevenueYearly)}/year — here's the math`;
+	const title = `Cookie consent & visitor data loss: ${formatCurrencyFull(lostRevenueYearly)}/year modeled opportunity cost`;
 	const params = new URLSearchParams({ url: shareUrl, title });
 	return `https://www.reddit.com/submit?${params.toString()}`;
 }
@@ -78,21 +78,13 @@ export function ShareButtons({
 			</p>
 			<div className="flex flex-wrap gap-2">
 				<SciFiButton asChild>
-					<a
-						href={twitterUrl}
-						rel="noopener noreferrer"
-						target="_blank"
-					>
+					<a href={twitterUrl} rel="noopener noreferrer" target="_blank">
 						<FaXTwitter className="size-3.5" />
 						<span>Share on X</span>
 					</a>
 				</SciFiButton>
 				<SciFiButton asChild>
-					<a
-						href={redditUrl}
-						rel="noopener noreferrer"
-						target="_blank"
-					>
+					<a href={redditUrl} rel="noopener noreferrer" target="_blank">
 						<FaRedditAlien className="size-3.5" />
 						<span>Share on Reddit</span>
 					</a>

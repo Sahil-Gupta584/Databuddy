@@ -7,17 +7,17 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import {
-	BOUNCE_RANGE_HIGH,
-	BOUNCE_RANGE_LOW,
 	calculateCookieBannerCost,
 	formatCurrencyFull,
 	formatNumber,
 	formatPercent,
+	VISITOR_DATA_LOSS_RANGE_HIGH,
+	VISITOR_DATA_LOSS_RANGE_LOW,
 } from "./calculator-engine";
 import { ShareButtons } from "./share-buttons";
 
 const DEFAULT_VISITORS = 50_000;
-const DEFAULT_BOUNCE_RATE = 0.3;
+const DEFAULT_VISITOR_DATA_LOSS_RATE = 0.55;
 const DEFAULT_VISITOR_TO_PAID = 0.015;
 const DEFAULT_REVENUE_PER_CONVERSION = 50;
 
@@ -31,7 +31,9 @@ function sliderToPercent(value: number): number {
 
 export function CalculatorSection() {
 	const [monthlyVisitors, setMonthlyVisitors] = useState(DEFAULT_VISITORS);
-	const [bannerBounceRate, setBannerBounceRate] = useState(DEFAULT_BOUNCE_RATE);
+	const [visitorDataLossRate, setVisitorDataLossRate] = useState(
+		DEFAULT_VISITOR_DATA_LOSS_RATE
+	);
 	const [visitorToPaidRate, setVisitorToPaidRate] = useState(
 		DEFAULT_VISITOR_TO_PAID
 	);
@@ -41,7 +43,7 @@ export function CalculatorSection() {
 
 	const results = calculateCookieBannerCost({
 		monthlyVisitors,
-		bannerBounceRate,
+		visitorDataLossRate,
 		visitorToPaidRate,
 		revenuePerConversion,
 	});
@@ -75,38 +77,32 @@ export function CalculatorSection() {
 									label="Monthly Visitors"
 									max={2_000_000}
 									min={0}
+									onChangeAction={setMonthlyVisitors}
 									sliderMax={100}
 									sliderStep={1}
 									sliderToValue={(v) =>
-										Math.round(
-											(v / 100) ** 2.5 * 2_000_000
-										)
+										Math.round((v / 100) ** 2.5 * 2_000_000)
 									}
-									step={1000}
 									suffix="/mo"
 									value={monthlyVisitors}
 									valueToSlider={(v) =>
-										Math.round(
-											(v / 2_000_000) ** (1 / 2.5) * 100
-										)
+										Math.round((v / 2_000_000) ** (1 / 2.5) * 100)
 									}
-									onChangeAction={setMonthlyVisitors}
 								/>
 
 								<InputField
 									displayPercent
-									hint="Share who leave before engaging because of the banner. One large B2B sample found 68.9% closed or ignored the banner; we default to 30% so the model stays conservative."
-									id="bounce"
-									label="Banner Bounce Rate"
-									max={0.45}
+									hint="Share of visits you do not measure in analytics because visitors did not consent (close, ignore, or reject). Peer-reviewed work measures consent and rejection, not page bounce; we map that to data loss. Default 55% sits in the 40–70% band typical of compliant banners."
+									id="data-loss"
+									label="Visitor Data Loss Rate"
+									max={0.75}
 									min={0}
-									sliderMax={450}
+									onChangeAction={setVisitorDataLossRate}
+									sliderMax={750}
 									sliderStep={1}
 									sliderToValue={sliderToPercent}
-									step={0.01}
-									value={bannerBounceRate}
+									value={visitorDataLossRate}
 									valueToSlider={percentToSlider}
-									onChangeAction={setBannerBounceRate}
 								/>
 
 								<InputField
@@ -116,13 +112,12 @@ export function CalculatorSection() {
 									label="Visitor-to-Paid Rate"
 									max={0.05}
 									min={0}
+									onChangeAction={setVisitorToPaidRate}
 									sliderMax={50}
 									sliderStep={1}
 									sliderToValue={sliderToPercent}
-									step={0.001}
 									value={visitorToPaidRate}
 									valueToSlider={percentToSlider}
-									onChangeAction={setVisitorToPaidRate}
 								/>
 
 								<InputField
@@ -131,14 +126,13 @@ export function CalculatorSection() {
 									label="Revenue per Conversion"
 									max={1000}
 									min={0}
+									onChangeAction={setRevenuePerConversion}
 									prefix="$"
 									sliderMax={1000}
 									sliderStep={5}
 									sliderToValue={(v) => v}
-									step={5}
 									value={revenuePerConversion}
 									valueToSlider={(v) => v}
-									onChangeAction={setRevenuePerConversion}
 								/>
 							</div>
 						</div>
@@ -164,9 +158,7 @@ export function CalculatorSection() {
 								<ResultRow
 									highlight
 									label="Opportunity Cost / mo"
-									value={formatCurrencyFull(
-										results.lostRevenueMonthly
-									)}
+									value={formatCurrencyFull(results.lostRevenueMonthly)}
 								/>
 
 								<Separator />
@@ -175,23 +167,16 @@ export function CalculatorSection() {
 									<p className="mb-1 text-muted-foreground text-xs uppercase tracking-wider">
 										Opportunity Cost / Year
 									</p>
-									<p className="font-bold text-2xl tabular-nums tracking-tight text-destructive sm:text-3xl">
-										{formatCurrencyFull(
-											results.lostRevenueYearly
-										)}
+									<p className="font-bold text-2xl text-destructive tabular-nums tracking-tight sm:text-3xl">
+										{formatCurrencyFull(results.lostRevenueYearly)}
 									</p>
-									<p className="mt-2 text-muted-foreground text-xs text-pretty">
-										Range at {formatPercent(BOUNCE_RANGE_LOW)}–
-										{formatPercent(BOUNCE_RANGE_HIGH)} banner bounce
-										(same other inputs):{" "}
+									<p className="mt-2 text-pretty text-muted-foreground text-xs">
+										Range at {formatPercent(VISITOR_DATA_LOSS_RANGE_LOW)}–
+										{formatPercent(VISITOR_DATA_LOSS_RANGE_HIGH)} visitor data
+										loss (same other inputs):{" "}
 										<span className="font-mono text-foreground">
-											{formatCurrencyFull(
-												results.lostRevenueYearlyRangeLow
-											)}{" "}
-											–{" "}
-											{formatCurrencyFull(
-												results.lostRevenueYearlyRangeHigh
-											)}
+											{formatCurrencyFull(results.lostRevenueYearlyRangeLow)} –{" "}
+											{formatCurrencyFull(results.lostRevenueYearlyRangeHigh)}
 										</span>
 										/year
 									</p>
@@ -207,9 +192,7 @@ export function CalculatorSection() {
 												Banner opportunity cost
 											</span>
 											<span className="font-semibold tabular-nums">
-												{formatCurrencyFull(
-													results.lostRevenueMonthly
-												)}
+												{formatCurrencyFull(results.lostRevenueMonthly)}
 												/mo
 											</span>
 										</div>
@@ -218,9 +201,7 @@ export function CalculatorSection() {
 												Databuddy ({results.databuddyPlanName})
 											</span>
 											<span className="font-semibold tabular-nums">
-												{formatCurrencyFull(
-													results.databuddyMonthlyCost
-												)}
+												{formatCurrencyFull(results.databuddyMonthlyCost)}
 												/mo
 											</span>
 										</div>
@@ -228,10 +209,10 @@ export function CalculatorSection() {
 								</div>
 							</div>
 
-							<p className="mt-4 text-muted-foreground text-xs text-pretty">
-								This estimates opportunity cost from industry bounce
-								data. Real impact varies by site, audience, and how your
-								banner is implemented.
+							<p className="mt-4 text-pretty text-muted-foreground text-xs">
+								This estimates opportunity cost from published consent and
+								data-loss studies. Real impact varies by site, audience, and
+								banner design.
 							</p>
 
 							<Separator className="my-4" />
@@ -247,11 +228,11 @@ export function CalculatorSection() {
 			</div>
 
 			<div className="mt-4 text-center">
-				<p className="text-muted-foreground text-xs text-pretty">
-					The yearly range uses {formatPercent(BOUNCE_RANGE_LOW)}–
-					{formatPercent(BOUNCE_RANGE_HIGH)} bounce — a conservative band vs.
-					studies that find much higher non-engagement (see sources below).
-					Databuddy needs no cookies, so no banner.
+				<p className="text-pretty text-muted-foreground text-xs">
+					The yearly range uses {formatPercent(VISITOR_DATA_LOSS_RANGE_LOW)}–
+					{formatPercent(VISITOR_DATA_LOSS_RANGE_HIGH)} visitor data loss —
+					aligned with peer-reviewed and industry consent benchmarks (sources
+					below). Databuddy needs no cookies, so no banner.
 				</p>
 			</div>
 		</section>
@@ -266,7 +247,6 @@ interface InputFieldProps {
 	onChangeAction: (value: number) => void;
 	min: number;
 	max: number;
-	step: number;
 	sliderMin?: number;
 	sliderMax: number;
 	sliderStep: number;
@@ -285,7 +265,6 @@ function InputField({
 	onChangeAction,
 	min,
 	max,
-	step,
 	sliderMin = 0,
 	sliderMax,
 	sliderStep,
@@ -313,14 +292,12 @@ function InputField({
 				aria-label={label}
 				max={sliderMax}
 				min={sliderMin}
-				step={sliderStep}
-				value={[valueToSlider(value)]}
 				onValueChange={(v) => {
 					const raw = sliderToValue(Number(v.at(0) ?? 0));
-					onChangeAction(
-						Math.min(max, Math.max(min, raw))
-					);
+					onChangeAction(Math.min(max, Math.max(min, raw)));
 				}}
+				step={sliderStep}
+				value={[valueToSlider(value)]}
 			/>
 			<p className="mt-1.5 text-muted-foreground text-xs">{hint}</p>
 		</div>

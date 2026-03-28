@@ -16,15 +16,14 @@ export function CtaSection() {
 						Drop the cookie banner. Keep the insights.
 					</h2>
 					<p className="mx-auto mb-6 max-w-xl text-pretty text-muted-foreground text-sm sm:text-base">
-						Databuddy is privacy-first analytics that needs no
-						cookies, no consent banners, and no GDPR headaches.
-						Under 30 KB. You stop losing visitors the day you
-						switch.
+						Databuddy is privacy-first analytics that needs no cookies, no
+						consent banners, and no GDPR headaches. Under 30 KB. You stop losing
+						measurable traffic the day you switch.
 					</p>
 
 					<div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
 						<ValueProp
-							description="No cookies, no banner, no bounce"
+							description="No cookies, no banner, no consent gap"
 							title="No consent required"
 						/>
 						<ValueProp

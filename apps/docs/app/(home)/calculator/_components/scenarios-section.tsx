@@ -1,13 +1,13 @@
 "use client";
 
 import { SciFiCard } from "@/components/scifi-card";
+import type { Scenario } from "./calculator-engine";
 import {
-	SCENARIOS,
 	formatCurrencyFull,
 	formatNumber,
 	formatPercent,
+	SCENARIOS,
 } from "./calculator-engine";
-import type { Scenario } from "./calculator-engine";
 
 export function ScenariosSection() {
 	return (
@@ -20,7 +20,7 @@ export function ScenariosSection() {
 					The numbers across 5 real-world profiles
 				</h2>
 				<p className="mx-auto max-w-2xl text-balance text-muted-foreground text-sm">
-					Opportunity cost at realistic bounce and visitor-to-paid
+					Opportunity cost at realistic visitor data loss and visitor-to-paid
 					assumptions. Your mileage will vary.
 				</p>
 			</div>
@@ -31,10 +31,8 @@ export function ScenariosSection() {
 				))}
 
 				<SciFiCard>
-					<div className="flex h-full flex-col items-center justify-center rounded border border-dashed border-border bg-card/40 p-5 text-center backdrop-blur-sm">
-						<p className="mb-2 font-semibold text-sm">
-							Your site?
-						</p>
+					<div className="flex h-full flex-col items-center justify-center rounded border border-border border-dashed bg-card/40 p-5 text-center backdrop-blur-sm">
+						<p className="mb-2 font-semibold text-sm">Your site?</p>
 						<p className="mb-4 text-muted-foreground text-xs">
 							Plug in your own numbers above
 						</p>
@@ -57,9 +55,7 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
 			<div className="flex h-full flex-col rounded border border-border bg-card/70 p-5 backdrop-blur-sm">
 				<div className="mb-4">
 					<div className="flex items-center justify-between">
-						<h3 className="font-semibold text-sm">
-							{scenario.name}
-						</h3>
+						<h3 className="font-semibold text-sm">{scenario.name}</h3>
 					</div>
 					<p className="mt-0.5 text-muted-foreground text-xs">
 						{scenario.description}
@@ -74,25 +70,19 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
 						</span>
 					</div>
 					<div className="flex justify-between">
-						<span className="text-muted-foreground">
-							Banner bounce
-						</span>
+						<span className="text-muted-foreground">Visitor data loss</span>
 						<span className="font-mono tabular-nums">
-							{formatPercent(scenario.inputs.bannerBounceRate)}
+							{formatPercent(scenario.inputs.visitorDataLossRate)}
 						</span>
 					</div>
 					<div className="flex justify-between">
-						<span className="text-muted-foreground">
-							Visitor-to-paid
-						</span>
+						<span className="text-muted-foreground">Visitor-to-paid</span>
 						<span className="font-mono tabular-nums">
 							{formatPercent(scenario.inputs.visitorToPaidRate)}
 						</span>
 					</div>
 					<div className="flex justify-between">
-						<span className="text-muted-foreground">
-							Rev / conversion
-						</span>
+						<span className="text-muted-foreground">Rev / conversion</span>
 						<span className="font-mono tabular-nums">
 							${scenario.inputs.revenuePerConversion}
 						</span>
