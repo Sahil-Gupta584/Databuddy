@@ -1,19 +1,27 @@
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
-import { cache } from "react";
-import { getServerRPCClient } from "@/lib/orpc-server";
+import { publicRPCClient } from "@/lib/orpc-public";
 import { LastUpdated } from "./_components/last-updated";
 import { MonitorRow } from "./_components/monitor-row";
 import { StatusBanner } from "./_components/status-banner";
+
+export const revalidate = 60;
+
+type StatusPageData = Awaited<
+	ReturnType<typeof publicRPCClient.statusPage.getBySlug>
+>;
 
 interface StatusPageProps {
 	params: Promise<{ slug: string }>;
 }
 
-const getStatusData = cache(async (slug: string) => {
-	const rpc = await getServerRPCClient();
-	return rpc.statusPage.getBySlug({ slug }).catch(() => null);
-});
+const getStatusData = unstable_cache(
+	async (slug: string): Promise<StatusPageData | null> =>
+		publicRPCClient.statusPage.getBySlug({ slug }).catch(() => null),
+	["status-page"],
+	{ revalidate: 60, tags: ["status-page"] }
+);
 
 export async function generateMetadata({
 	params,
