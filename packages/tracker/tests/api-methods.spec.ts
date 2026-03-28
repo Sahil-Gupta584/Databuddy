@@ -242,6 +242,45 @@ test.describe("API Methods", () => {
 		});
 	});
 
+	test.describe("track with ad click IDs", () => {
+		test("includes gclid in custom track events", async ({ page }) => {
+			await page.goto("/test?gclid=track_gclid_abc");
+			await page.evaluate(() => {
+				(window as any).databuddyConfig = {
+					clientId: "test-track-gclid",
+					ignoreBotDetection: true,
+					batchTimeout: 200,
+				};
+			});
+			await page.addScriptTag({ url: "/dist/databuddy-debug.js" });
+
+			await expect
+				.poll(async () => await page.evaluate(() => !!(window as any).db))
+				.toBeTruthy();
+
+			const requestPromise = page.waitForRequest(
+				(req) =>
+					req.url().includes("basket.databuddy.cc") &&
+					hasEvent(req, (e) => e.name === "gclid_track_test")
+			);
+
+			await page.evaluate(() => {
+				(window as any).db.track("gclid_track_test", { plan: "pro" });
+			});
+
+			const request = await requestPromise;
+			const raw = findEvent(request, (e) => e.name === "gclid_track_test");
+			expect(raw).toBeDefined();
+			if (raw === undefined) {
+				throw new Error("Expected gclid_track_test in request payload");
+			}
+			const payload = eventPayloadForAssert(raw);
+
+			expect(payload.gclid).toBe("track_gclid_abc");
+			expect(payload.plan).toBe("pro");
+		});
+	});
+
 	test.describe("clear", () => {
 		test("generates new anonymousId after clear", async ({ page }) => {
 			await page.goto("/test");
@@ -339,6 +378,36 @@ test.describe("API Methods", () => {
 			const payload = eventPayloadForAssert(raw);
 
 			expect(payload.should_be_cleared).toBeUndefined();
+		});
+
+		test("clears ad click IDs after clear", async ({ page }) => {
+			await page.goto("/test?gclid=clear_me_123");
+			await page.evaluate(() => {
+				(window as any).databuddyConfig = {
+					clientId: "test-clear-gclid",
+					ignoreBotDetection: true,
+					batchTimeout: 200,
+				};
+			});
+			await page.addScriptTag({ url: "/dist/databuddy-debug.js" });
+
+			await expect
+				.poll(async () => await page.evaluate(() => !!(window as any).db))
+				.toBeTruthy();
+
+			const storedBefore = await page.evaluate(() =>
+				localStorage.getItem("did_params")
+			);
+			expect(storedBefore).toBeTruthy();
+
+			await page.evaluate(() => {
+				(window as any).db.clear();
+			});
+
+			const storedAfter = await page.evaluate(() =>
+				localStorage.getItem("did_params")
+			);
+			expect(storedAfter).toBeNull();
 		});
 
 		test("resets page count after clear", async ({ page }) => {

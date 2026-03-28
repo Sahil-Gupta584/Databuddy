@@ -146,6 +146,7 @@ export const analyticsEventSchema = z.object({
 		.max(VALIDATION_LIMITS.UTM_MAX_LENGTH)
 		.nullable()
 		.optional(),
+	gclid: z.string().max(VALIDATION_LIMITS.UTM_MAX_LENGTH).nullable().optional(),
 	load_time: z
 		.number()
 		.max(VALIDATION_LIMITS.PERFORMANCE_MAX)

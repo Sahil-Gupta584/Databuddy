@@ -138,6 +138,8 @@ export class Databuddy extends BaseTracker {
 			return;
 		}
 
+		this.refreshUrlParams();
+
 		const url = window.location.href;
 		if (this.lastPath === url) {
 			return;
@@ -326,7 +328,11 @@ export class Databuddy extends BaseTracker {
 		if (this.shouldSkipTracking()) {
 			return;
 		}
-		this.trackEvent(name, { ...this.globalProperties, ...props });
+		this.trackEvent(name, {
+			...this.urlParams,
+			...this.globalProperties,
+			...props,
+		});
 	}
 
 	setGlobalProperties(props: Record<string, unknown>) {
@@ -343,6 +349,7 @@ export class Databuddy extends BaseTracker {
 				sessionStorage.removeItem("did_session_start");
 			} catch {}
 		}
+		this.clearUrlParamStorage();
 		this.anonymousId = this.generateAnonymousId();
 		this.sessionId = this.generateSessionId();
 		this.sessionStartTime = Date.now();

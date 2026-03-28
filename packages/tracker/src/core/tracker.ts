@@ -9,6 +9,21 @@ import type {
 } from "./types";
 import { generateUUIDv4, isDebugMode, isLocalhost, logger } from "./utils";
 
+const TRACKED_PARAMS: Record<string, boolean> = {
+	gclid: true,
+	fbclid: true,
+	ttclid: true,
+	twclid: true,
+	li_fat_id: true,
+	msclkid: true,
+	utm_source: false,
+	utm_medium: false,
+	utm_campaign: false,
+	utm_term: false,
+	utm_content: false,
+};
+const DID_PARAMS_KEY = "did_params";
+
 const HEADLESS_CHROME_REGEX = /\bHeadlessChrome\b/i;
 const PHANTOMJS_REGEX = /\bPhantomJS\b/i;
 
@@ -53,6 +68,8 @@ export class BaseTracker {
 	private isFlushingTrack = false;
 
 	private readonly routeChangeCallbacks: Array<(path: string) => void> = [];
+
+	protected urlParams: Record<string, string> = {};
 
 	constructor(options: TrackerOptions) {
 		if (!options.clientId || typeof options.clientId !== "string") {
@@ -100,6 +117,7 @@ export class BaseTracker {
 		this.anonymousId = this.getOrCreateAnonymousId();
 		this.sessionId = this.getOrCreateSessionId();
 		this.sessionStartTime = this.getSessionStartTime();
+		this.refreshUrlParams();
 		this.setupBotDetection();
 		logger.log("Tracker initialized", this.options);
 	}
@@ -279,19 +297,51 @@ export class BaseTracker {
 		return pathname;
 	}
 
-	protected getUtmParams() {
+	protected refreshUrlParams(): void {
 		if (this.isServer()) {
-			return {};
+			return;
+		}
+		const search = new URLSearchParams(window.location.search);
+		const params: Record<string, string> = {};
+		const persist: Record<string, string> = {};
+
+		let stored: Record<string, string> = {};
+		try {
+			stored = JSON.parse(localStorage.getItem(DID_PARAMS_KEY) ?? "{}");
+		} catch {
+			/* ignore */
 		}
 
-		const urlParams = new URLSearchParams(window.location.search);
-		return {
-			utm_source: urlParams.get("utm_source") || undefined,
-			utm_medium: urlParams.get("utm_medium") || undefined,
-			utm_campaign: urlParams.get("utm_campaign") || undefined,
-			utm_term: urlParams.get("utm_term") || undefined,
-			utm_content: urlParams.get("utm_content") || undefined,
-		};
+		for (const [key, shouldPersist] of Object.entries(TRACKED_PARAMS)) {
+			const val = search.get(key) ?? (shouldPersist ? stored[key] : undefined);
+			if (val) {
+				params[key] = val;
+				if (shouldPersist) {
+					persist[key] = val;
+				}
+			}
+		}
+
+		if (Object.keys(persist).length > 0) {
+			try {
+				localStorage.setItem(DID_PARAMS_KEY, JSON.stringify(persist));
+			} catch {
+				/* ignore */
+			}
+		}
+
+		this.urlParams = params;
+	}
+
+	protected clearUrlParamStorage(): void {
+		this.urlParams = {};
+		if (!this.isServer()) {
+			try {
+				localStorage.removeItem(DID_PARAMS_KEY);
+			} catch {
+				/* ignore */
+			}
+		}
 	}
 
 	getBaseContext(): EventContext {
@@ -322,7 +372,7 @@ export class BaseTracker {
 			viewport_size: width && height ? `${width}x${height}` : undefined,
 			timezone,
 			language: navigator.language,
-			...this.getUtmParams(),
+			...this.urlParams,
 		};
 	}
 

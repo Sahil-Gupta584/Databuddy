@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASES.ANALYTICS}.events (
   utm_campaign Nullable(String),
   utm_term Nullable(String),
   utm_content Nullable(String),
+  gclid Nullable(String),
   
   load_time Nullable(Int32),
   dom_ready_time Nullable(Int32),
@@ -834,6 +835,7 @@ export interface AnalyticsEvent {
 	utm_campaign?: string;
 	utm_term?: string;
 	utm_content?: string;
+	gclid?: string;
 
 	load_time?: number;
 	dom_ready_time?: number;

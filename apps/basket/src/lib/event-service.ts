@@ -142,6 +142,7 @@ export function insertTrackEvent(
 			utm_campaign: trackData.utm_campaign,
 			utm_term: trackData.utm_term,
 			utm_content: trackData.utm_content,
+			gclid: trackData.gclid,
 
 			load_time: validatePerformanceMetric(trackData.load_time),
 			dom_ready_time: validatePerformanceMetric(trackData.dom_ready_time),

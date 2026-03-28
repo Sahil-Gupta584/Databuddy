@@ -28,6 +28,8 @@ const BaseEventPayload = t.Object({
 	utm_campaign: t.Optional(t.String()),
 	utm_term: t.Optional(t.String()),
 	utm_content: t.Optional(t.String()),
+	// Ad click IDs
+	gclid: t.Optional(t.String()),
 });
 
 export const TrackEvent = t.Object({
