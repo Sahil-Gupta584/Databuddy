@@ -2,17 +2,48 @@
 
 import { useChat as useAiSdkChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { createContext, useContext, useEffect, useMemo } from "react";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useAgentChatTransport } from "@/app/(main)/websites/[id]/agent/_components/hooks/use-agent-chat";
 import {
 	getMessagesFromLocal,
 	saveMessagesToLocal,
 } from "@/app/(main)/websites/[id]/agent/_components/hooks/use-chat-db";
 
-type ChatContextType = ReturnType<typeof useAiSdkChat<UIMessage>>;
+type ChatApi = ReturnType<typeof useAiSdkChat<UIMessage>>;
+type SendArg = Parameters<ChatApi["sendMessage"]>[0];
 
-const ChatContext = createContext<ChatContextType | null>(null);
+interface PendingEntry {
+	text: string;
+	metadata?: unknown;
+}
 
+interface PendingQueueValue {
+	messages: string[];
+	removeAction: (index: number) => void;
+}
+
+const ChatContext = createContext<ChatApi | null>(null);
+const PendingQueueContext = createContext<PendingQueueValue>({
+	messages: [],
+	removeAction: () => {},
+});
+
+/**
+ * Queue-strategy wrapper around AI SDK's useChat.
+ *
+ * When the model is streaming/submitted and the user sends another text
+ * message, we enqueue it. When the run finishes, only the latest queued
+ * message is dispatched (Chat SDK "queue" strategy). All queued messages
+ * are exposed for visual display.
+ */
 export function ChatProvider({
 	chatId,
 	websiteId,
@@ -37,24 +68,120 @@ export function ChatProvider({
 		messages: initialMessages,
 	});
 
+	const chatRef = useRef(chat);
+	chatRef.current = chat;
+
+	const [pendingTexts, setPendingTexts] = useState<string[]>([]);
+	const pendingRef = useRef<PendingEntry[]>([]);
+	const prevStatusRef = useRef(chat.status);
+
+	const syncState = useCallback(() => {
+		setPendingTexts(pendingRef.current.map((p) => p.text));
+	}, []);
+
+	const isBusy = (c: ChatApi) =>
+		c.status === "submitted" || c.status === "streaming";
+
+	const sendMessage = useCallback(
+		(message?: SendArg) => {
+			const c = chatRef.current;
+			if (
+				message != null &&
+				typeof message === "object" &&
+				"text" in message &&
+				isBusy(c)
+			) {
+				const m = message as PendingEntry;
+				pendingRef.current = [...pendingRef.current, { text: m.text, metadata: m.metadata }];
+				syncState();
+				return Promise.resolve();
+			}
+			return c.sendMessage(message);
+		},
+		[syncState]
+	);
+
+	const clearQueue = useCallback(() => {
+		pendingRef.current = [];
+		syncState();
+	}, [syncState]);
+
+	const stop = useCallback(() => {
+		clearQueue();
+		return chatRef.current.stop();
+	}, [clearQueue]);
+
+	const removeAction = useCallback(
+		(index: number) => {
+			pendingRef.current = pendingRef.current.filter((_, i) => i !== index);
+			syncState();
+		},
+		[syncState]
+	);
+
+	useEffect(() => {
+		const prev = prevStatusRef.current;
+		prevStatusRef.current = chat.status;
+
+		if (
+			(prev !== "streaming" && prev !== "submitted") ||
+			(chat.status !== "ready" && chat.status !== "error")
+		) {
+			return;
+		}
+		const pending = pendingRef.current;
+		if (pending.length === 0) {
+			return;
+		}
+		const [next, ...rest] = pending;
+		pendingRef.current = rest;
+		syncState();
+		chat
+			.sendMessage(
+				next.metadata === undefined
+					? { text: next.text }
+					: { text: next.text, metadata: next.metadata }
+			)
+			.catch(() => undefined);
+	}, [chat.status, chat, syncState]);
+
+	const chatValue = useMemo(
+		(): ChatApi => ({ ...chat, sendMessage, stop }),
+		[chat, sendMessage, stop]
+	);
+
+	const queueValue = useMemo(
+		(): PendingQueueValue => ({ messages: pendingTexts, removeAction }),
+		[pendingTexts, removeAction]
+	);
+
 	useEffect(() => {
 		saveMessagesToLocal(websiteId, chatId, chat.messages);
 	}, [websiteId, chatId, chat.messages]);
 
-	return <ChatContext.Provider value={chat}>{children}</ChatContext.Provider>;
+	return (
+		<ChatContext.Provider value={chatValue}>
+			<PendingQueueContext.Provider value={queueValue}>
+				{children}
+			</PendingQueueContext.Provider>
+		</ChatContext.Provider>
+	);
 }
 
 export function useChat() {
 	const chat = useContext(ChatContext);
-
 	if (!chat) {
 		throw new Error("useChat must be used within a `ChatProvider`");
 	}
-
 	return chat;
 }
 
 export function useChatStatus() {
 	const { status } = useChat();
 	return status;
+}
+
+/** Returns the queued messages and a remove callback. */
+export function usePendingQueue() {
+	return useContext(PendingQueueContext);
 }

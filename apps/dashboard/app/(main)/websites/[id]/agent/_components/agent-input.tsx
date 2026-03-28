@@ -1,13 +1,28 @@
 "use client";
 
+import { ClockCountdownIcon } from "@phosphor-icons/react/dist/ssr/ClockCountdown";
 import { PaperPlaneRightIcon } from "@phosphor-icons/react/dist/ssr/PaperPlaneRight";
 import { StopIcon } from "@phosphor-icons/react/dist/ssr/Stop";
+import { XIcon } from "@phosphor-icons/react/dist/ssr/X";
 import type { UIMessage } from "ai";
 import { useAtom } from "jotai";
 import { useParams } from "next/navigation";
+import {
+	Queue,
+	QueueItem,
+	QueueItemAction,
+	QueueItemActions,
+	QueueItemContent,
+	QueueItemIndicator,
+	QueueList,
+	QueueSection,
+	QueueSectionContent,
+	QueueSectionLabel,
+	QueueSectionTrigger,
+} from "@/components/ai-elements/queue";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useChat } from "@/contexts/chat-context";
+import { useChat, usePendingQueue } from "@/contexts/chat-context";
 import { cn } from "@/lib/utils";
 import { agentInputAtom } from "./agent-atoms";
 import { useAgentChatId, useSetAgentChatId } from "./agent-chat-context";
@@ -34,6 +49,7 @@ function getChatTitle(messages: UIMessage[], currentInput: string): string {
 
 export function AgentInput() {
 	const { sendMessage, stop, status, messages } = useChat();
+	const { messages: pendingMessages, removeAction } = usePendingQueue();
 	const isLoading = status === "streaming" || status === "submitted";
 	const [input, setInput] = useAtom(agentInputAtom);
 	const agentCommands = useAgentCommands();
@@ -46,7 +62,7 @@ export function AgentInput() {
 
 	const handleSubmit = (e?: React.FormEvent) => {
 		e?.preventDefault();
-		if (!input.trim() || isLoading) {
+		if (!input.trim()) {
 			return;
 		}
 		if (currentChatId) {
@@ -54,7 +70,6 @@ export function AgentInput() {
 		}
 
 		const text = input.trim();
-
 		const title = getChatTitle(messages, text);
 		saveChat({ id: currentChatId, websiteId, title });
 
@@ -77,6 +92,14 @@ export function AgentInput() {
 	return (
 		<div className="shrink-0 border-t bg-sidebar/30 backdrop-blur-sm">
 			<div className="mx-auto max-w-4xl p-4">
+				{pendingMessages.length > 0 ? (
+					<PendingQueue
+						messages={pendingMessages}
+						onClear={stop}
+						onRemove={removeAction}
+					/>
+				) : null}
+
 				<div className="relative">
 					<AgentCommandMenu {...agentCommands} />
 
@@ -87,7 +110,6 @@ export function AgentInput() {
 									"px-4 text-base",
 									"focus:ring-2 focus:ring-primary/20"
 								)}
-								disabled={isLoading}
 								maxRows={4}
 								minRows={1}
 								onChange={handleChange}
@@ -98,28 +120,29 @@ export function AgentInput() {
 							/>
 						</div>
 
-						{isLoading ? (
+						<div className="flex shrink-0 gap-1.5">
+							{isLoading ? (
+								<Button
+									aria-label="Stop generation"
+									className="size-12"
+									onClick={handleStop}
+									size="icon"
+									type="button"
+									variant="destructive"
+								>
+									<StopIcon className="size-5" weight="fill" />
+								</Button>
+							) : null}
 							<Button
-								className="size-12 shrink-0"
-								onClick={handleStop}
-								size="icon"
-								title="Stop generation"
-								type="button"
-								variant="destructive"
-							>
-								<StopIcon className="size-5" weight="fill" />
-							</Button>
-						) : (
-							<Button
-								className="size-12 shrink-0"
+								aria-label={isLoading ? "Queue message" : "Send message"}
+								className="size-12"
 								disabled={!input.trim()}
 								size="icon"
-								title="Send message"
 								type="submit"
 							>
 								<PaperPlaneRightIcon className="size-5" weight="duotone" />
 							</Button>
-						)}
+						</div>
 					</form>
 				</div>
 
@@ -136,5 +159,71 @@ export function AgentInput() {
 				</p>
 			</div>
 		</div>
+	);
+}
+
+function PendingQueue({
+	messages,
+	onRemove,
+	onClear,
+}: {
+	messages: string[];
+	onRemove: (index: number) => void;
+	onClear: () => void;
+}) {
+	return (
+		<Queue className="mb-3 rounded shadow-none">
+			<QueueSection>
+				<QueueSectionTrigger className="rounded">
+					<QueueSectionLabel
+						count={messages.length}
+						icon={
+							<ClockCountdownIcon
+								className="size-3.5"
+								weight="duotone"
+							/>
+						}
+						label="queued"
+					/>
+					{messages.length > 1 ? (
+						<button
+							className="text-muted-foreground/60 text-xs hover:text-foreground"
+							onClick={(e) => {
+								e.stopPropagation();
+								onClear();
+							}}
+							type="button"
+						>
+							Clear all
+						</button>
+					) : null}
+				</QueueSectionTrigger>
+				<QueueSectionContent>
+					<QueueList>
+						{messages.map((text, index) => (
+							<QueueItem
+								className="rounded"
+								key={`${index}-${text.slice(0, 20)}`}
+							>
+								<div className="flex items-center gap-2">
+									<QueueItemIndicator />
+									<QueueItemContent className="flex-1">
+										{text}
+									</QueueItemContent>
+									<QueueItemActions>
+										<QueueItemAction
+											aria-label="Remove queued message"
+											onClick={() => onRemove(index)}
+										>
+											<XIcon className="size-3.5" />
+										</QueueItemAction>
+									</QueueItemActions>
+								</div>
+							</QueueItem>
+						))}
+					</QueueList>
+				</QueueSectionContent>
+			</QueueSection>
+		</Queue>
 	);
 }
