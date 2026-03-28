@@ -33,6 +33,8 @@ interface LatencyChartProps {
 	storageKey: string;
 }
 
+const CHART_BLOCK_MIN_PX = 168;
+
 const METRICS: Array<{
 	key: string;
 	label: string;
@@ -169,38 +171,50 @@ export function LatencyChart({
 	return (
 		<div>
 			<button
-				className="flex w-full cursor-pointer items-center gap-3 border-t px-4 py-2.5 text-left hover:bg-accent/40 sm:px-6"
+				className="flex min-h-10 w-full cursor-pointer items-center gap-3 border-t px-4 py-2.5 text-left hover:bg-accent/40 sm:px-6"
 				onClick={() => setIsOpen((prev) => !prev)}
 				type="button"
 			>
-				<span className="text-balance font-medium text-muted-foreground text-xs uppercase tracking-wider">
+				<span className="shrink-0 text-balance font-medium text-muted-foreground text-xs uppercase tracking-wider">
 					Response Time
 				</span>
 
-				{!isLoading && summary.avg != null && (
-					<span className="flex items-center gap-3 text-muted-foreground text-xs tabular-nums">
-						<span className="flex items-center gap-1">
-							<span
-								className="inline-block size-1.5 rounded-full"
-								style={{
-									backgroundColor: "var(--color-chart-1)",
-								}}
-							/>
-							{formatMs(summary.avg)}
+				<span className="flex min-h-4.5 min-w-0 flex-1 items-center gap-3 text-muted-foreground text-xs tabular-nums">
+					{isLoading ? (
+						<>
+							<Skeleton className="h-3 w-18 rounded" />
+							<Skeleton className="h-3 w-18 rounded" />
+						</>
+					) : summary.avg == null ? (
+						<span aria-hidden className="inline-flex gap-3">
+							<span className="invisible tabular-nums">999ms</span>
+							<span className="invisible tabular-nums">999ms</span>
 						</span>
-						{summary.p95 != null && (
+					) : (
+						<>
 							<span className="flex items-center gap-1">
 								<span
 									className="inline-block size-1.5 rounded-full"
 									style={{
-										backgroundColor: "var(--color-chart-4)",
+										backgroundColor: "var(--color-chart-1)",
 									}}
 								/>
-								{formatMs(summary.p95)}
+								{formatMs(summary.avg)}
 							</span>
-						)}
-					</span>
-				)}
+							{summary.p95 != null && (
+								<span className="flex items-center gap-1">
+									<span
+										className="inline-block size-1.5 rounded-full"
+										style={{
+											backgroundColor: "var(--color-chart-4)",
+										}}
+									/>
+									{formatMs(summary.p95)}
+								</span>
+							)}
+						</>
+					)}
+				</span>
 
 				<CaretDownIcon
 					className={cn(
@@ -221,17 +235,25 @@ export function LatencyChart({
 						transition={{ duration: 0.2, ease: "easeOut" }}
 					>
 						<div className="px-4 pt-1 pb-4 sm:px-6">
-							{isLoading ? (
-								<Skeleton className="h-36 w-full rounded" />
-							) : chartData.length === 0 ? (
-								<div className="flex h-28 items-center justify-center">
-									<span className="text-muted-foreground text-xs">
-										No response time data
-									</span>
-								</div>
-							) : (
-								<LatencyAreaChart data={chartData} />
-							)}
+							<div className="w-full" style={{ minHeight: CHART_BLOCK_MIN_PX }}>
+								{isLoading ? (
+									<Skeleton
+										className="w-full rounded"
+										style={{ minHeight: CHART_BLOCK_MIN_PX }}
+									/>
+								) : chartData.length === 0 ? (
+									<div
+										className="flex items-center justify-center"
+										style={{ minHeight: CHART_BLOCK_MIN_PX }}
+									>
+										<span className="text-muted-foreground text-xs">
+											No response time data
+										</span>
+									</div>
+								) : (
+									<LatencyAreaChart data={chartData} />
+								)}
+							</div>
 						</div>
 					</motion.div>
 				)}
@@ -252,106 +274,111 @@ function LatencyAreaChart({ data }: { data: ChartDataPoint[] }) {
 
 	if (!hasVariation) {
 		return (
-			<div className="flex h-28 items-center">
+			<div
+				className="flex items-center"
+				style={{ minHeight: CHART_BLOCK_MIN_PX }}
+			>
 				<div className="h-px w-full bg-chart-1/30" />
 			</div>
 		);
 	}
 
 	return (
-		<div>
-			<ResponsiveContainer height={144} width="100%">
-				<AreaChart
-					data={data}
-					margin={{ top: 4, right: 0, left: -12, bottom: 0 }}
-				>
-					<defs>
-						{METRICS.map((m) => (
-							<linearGradient
-								id={`latency-g-${m.key}`}
-								key={m.key}
-								x1="0"
-								x2="0"
-								y1="0"
-								y2="1"
-							>
-								<stop offset="0%" stopColor={m.color} stopOpacity={0.12} />
-								<stop offset="95%" stopColor={m.color} stopOpacity={0} />
-							</linearGradient>
-						))}
-					</defs>
+		<div className="w-full" style={{ minHeight: CHART_BLOCK_MIN_PX }}>
+			<div className="h-36 w-full">
+				<ResponsiveContainer height={144} width="100%">
+					<AreaChart
+						data={data}
+						margin={{ top: 4, right: 0, left: -12, bottom: 0 }}
+					>
+						<defs>
+							{METRICS.map((m) => (
+								<linearGradient
+									id={`latency-g-${m.key}`}
+									key={m.key}
+									x1="0"
+									x2="0"
+									y1="0"
+									y2="1"
+								>
+									<stop offset="0%" stopColor={m.color} stopOpacity={0.12} />
+									<stop offset="95%" stopColor={m.color} stopOpacity={0} />
+								</linearGradient>
+							))}
+						</defs>
 
-					<CartesianGrid
-						stroke="var(--border)"
-						strokeOpacity={0.4}
-						vertical={false}
-					/>
-
-					<XAxis
-						axisLine={false}
-						dataKey="date"
-						interval="preserveStartEnd"
-						minTickGap={40}
-						tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-						tickFormatter={(v: string) => formatTickDate(v, granularity)}
-						tickLine={false}
-						tickMargin={8}
-					/>
-
-					<YAxis
-						axisLine={false}
-						domain={["dataMin", "auto"]}
-						tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-						tickFormatter={formatMs}
-						tickLine={false}
-						width={52}
-					/>
-
-					<Tooltip
-						content={({ active, payload, label }) => (
-							<ChartTooltip
-								active={active}
-								entries={createTooltipEntries(
-									payload as Array<{
-										dataKey: string;
-										value: number;
-										color: string;
-									}>,
-									METRICS
-								)}
-								formatLabelAction={(l) => formatTooltipLabel(l, granularity)}
-								label={label}
-							/>
-						)}
-						cursor={{
-							stroke: "var(--border)",
-							strokeDasharray: "3 3",
-						}}
-					/>
-
-					{METRICS.map((m) => (
-						<Area
-							activeDot={{
-								r: 2,
-								fill: m.color,
-								stroke: "var(--color-background)",
-								strokeWidth: 1.5,
-							}}
-							connectNulls
-							dataKey={m.key}
-							dot={false}
-							fill={`url(#latency-g-${m.key})`}
-							key={m.key}
-							name={m.label}
-							stroke={m.color}
-							strokeWidth={1.5}
-							type="monotone"
+						<CartesianGrid
+							stroke="var(--border)"
+							strokeOpacity={0.4}
+							vertical={false}
 						/>
-					))}
-				</AreaChart>
-			</ResponsiveContainer>
 
-			<div className="mt-2 flex items-center justify-end gap-3">
+						<XAxis
+							axisLine={false}
+							dataKey="date"
+							interval="preserveStartEnd"
+							minTickGap={40}
+							tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+							tickFormatter={(v: string) => formatTickDate(v, granularity)}
+							tickLine={false}
+							tickMargin={8}
+						/>
+
+						<YAxis
+							axisLine={false}
+							domain={["dataMin", "auto"]}
+							tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+							tickFormatter={formatMs}
+							tickLine={false}
+							width={52}
+						/>
+
+						<Tooltip
+							content={({ active, payload, label }) => (
+								<ChartTooltip
+									active={active}
+									entries={createTooltipEntries(
+										payload as Array<{
+											dataKey: string;
+											value: number;
+											color: string;
+										}>,
+										METRICS
+									)}
+									formatLabelAction={(l) => formatTooltipLabel(l, granularity)}
+									label={label}
+								/>
+							)}
+							cursor={{
+								stroke: "var(--border)",
+								strokeDasharray: "3 3",
+							}}
+						/>
+
+						{METRICS.map((m) => (
+							<Area
+								activeDot={{
+									r: 2,
+									fill: m.color,
+									stroke: "var(--color-background)",
+									strokeWidth: 1.5,
+								}}
+								connectNulls
+								dataKey={m.key}
+								dot={false}
+								fill={`url(#latency-g-${m.key})`}
+								key={m.key}
+								name={m.label}
+								stroke={m.color}
+								strokeWidth={1.5}
+								type="monotone"
+							/>
+						))}
+					</AreaChart>
+				</ResponsiveContainer>
+			</div>
+
+			<div className="mt-2 flex min-h-6 items-center justify-end gap-3">
 				{METRICS.map((m) => (
 					<span
 						className="flex items-center gap-1 text-[10px] text-muted-foreground"

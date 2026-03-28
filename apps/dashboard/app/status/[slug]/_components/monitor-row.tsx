@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { formatDateOnly, fromNow } from "@/lib/time";
 import { buildUptimeHeatmapDays } from "@/lib/uptime/heatmap-days";
 import { UptimeHeatmapStrip } from "@/lib/uptime/heatmap-strip";
+import { LatencyChartChunkPlaceholder } from "@/lib/uptime/latency-chart-chunk-placeholder";
 import { cn } from "@/lib/utils";
 
 const LatencyChart = dynamic(
@@ -17,7 +18,10 @@ const LatencyChart = dynamic(
 		import("@/lib/uptime/latency-chart").then((m) => ({
 			default: m.LatencyChart,
 		})),
-	{ ssr: false }
+	{
+		ssr: false,
+		loading: () => <LatencyChartChunkPlaceholder />,
+	}
 );
 
 interface DailyData {

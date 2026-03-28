@@ -39,6 +39,7 @@ import { useDateFilters } from "@/hooks/use-date-filters";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import { orpc } from "@/lib/orpc";
 import { fromNow, localDayjs } from "@/lib/time";
+import { LatencyChartChunkPlaceholder } from "@/lib/uptime/latency-chart-chunk-placeholder";
 import { UptimeHeatmap } from "@/lib/uptime/uptime-heatmap";
 import {
 	RecentActivity,
@@ -51,7 +52,10 @@ const LatencyChart = dynamic(
 		import("@/lib/uptime/latency-chart").then((m) => ({
 			default: m.LatencyChart,
 		})),
-	{ ssr: false }
+	{
+		ssr: false,
+		loading: () => <LatencyChartChunkPlaceholder />,
+	}
 );
 
 const RECENT_CHECKS_PAGE_SIZE = 50;
