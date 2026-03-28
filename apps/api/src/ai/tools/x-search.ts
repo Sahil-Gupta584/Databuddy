@@ -1,5 +1,6 @@
 import { generateText, tool } from "ai";
 import { z } from "zod";
+import { captureError } from "../../lib/tracing";
 import { executeQuery } from "../../query";
 import type { AppContext } from "../config/context";
 import { models } from "../config/models";
@@ -182,21 +183,47 @@ ${context ? `\nSearch context: ${context}` : ""}${referrerContext}`;
 			});
 
 			const executionTime = Date.now() - searchStart;
+			const text = result.text?.trim() ?? "";
+
+			if (text.length === 0) {
+				logger.warn("X search returned empty text", {
+					query,
+					executionTime: `${executionTime}ms`,
+				});
+				captureError(new Error("x_search_empty_response"), {
+					query,
+					tool: "x_search",
+				});
+				return {
+					answer:
+						"No X/Twitter results were returned for this query. The live X search may have found no public posts, or the search service returned an empty response. Try a simpler query (brand name or @handle) or ask again in a moment.",
+					query,
+					executionTime,
+					source: "grok_x_search",
+					empty: true,
+				};
+			}
 
 			logger.info("X search completed", {
 				query,
 				executionTime: `${executionTime}ms`,
-				responseLength: result.text.length,
+				responseLength: text.length,
 			});
 
 			return {
-				answer: result.text,
+				answer: text,
 				query,
 				executionTime,
 				source: "grok_x_search",
 			};
 		} catch (error) {
 			const executionTime = Date.now() - searchStart;
+
+			captureError(error, {
+				query,
+				tool: "x_search",
+				executionTime,
+			});
 
 			logger.error("X search failed", {
 				query,

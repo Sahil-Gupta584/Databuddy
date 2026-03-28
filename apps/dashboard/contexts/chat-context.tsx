@@ -7,6 +7,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -53,23 +54,26 @@ export function ChatProvider({
 	websiteId: string;
 	children: React.ReactNode;
 }) {
-	const initialMessages = useMemo(
-		() =>
-			typeof window === "undefined"
-				? []
-				: getMessagesFromLocal(websiteId, chatId),
-		[websiteId, chatId]
-	);
-
 	const transport = useAgentChatTransport(chatId);
+	/** Empty on server and first client render so SSR HTML matches hydration; restored in useLayoutEffect. */
 	const chat = useAiSdkChat<UIMessage>({
 		id: chatId,
 		transport,
-		messages: initialMessages,
+		messages: [],
 	});
 
 	const chatRef = useRef(chat);
 	chatRef.current = chat;
+
+	const [hasRestoredFromLocal, setHasRestoredFromLocal] = useState(false);
+
+	useLayoutEffect(() => {
+		const stored = getMessagesFromLocal(websiteId, chatId);
+		if (stored.length > 0) {
+			chatRef.current.setMessages(stored);
+		}
+		setHasRestoredFromLocal(true);
+	}, [websiteId, chatId]);
 
 	const [pendingTexts, setPendingTexts] = useState<string[]>([]);
 	const pendingRef = useRef<PendingEntry[]>([]);
@@ -92,7 +96,10 @@ export function ChatProvider({
 				isBusy(c)
 			) {
 				const m = message as PendingEntry;
-				pendingRef.current = [...pendingRef.current, { text: m.text, metadata: m.metadata }];
+				pendingRef.current = [
+					...pendingRef.current,
+					{ text: m.text, metadata: m.metadata },
+				];
 				syncState();
 				return Promise.resolve();
 			}
@@ -156,8 +163,11 @@ export function ChatProvider({
 	);
 
 	useEffect(() => {
+		if (!hasRestoredFromLocal) {
+			return;
+		}
 		saveMessagesToLocal(websiteId, chatId, chat.messages);
-	}, [websiteId, chatId, chat.messages]);
+	}, [websiteId, chatId, chat.messages, hasRestoredFromLocal]);
 
 	return (
 		<ChatContext.Provider value={chatValue}>

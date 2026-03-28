@@ -79,9 +79,14 @@ const ANALYTICS_CORE_RULES = `**Bounce rate (CRITICAL):**
 - Do NOT save trivial or redundant information
 
 **Web Search:**
-- web_search: Search the web for external context. Use for industry benchmarks, best practices, competitor analysis, marketing advice, SEO tips, or any question that goes beyond the analytics data
+- web_search: Search the general web (Perplexity). Use for industry benchmarks, best practices, competitor sites, marketing advice, SEO tips, or news — not for X/Twitter-specific questions
 - Pass a clear, specific query and optional context about the user's situation
 - Do NOT use web_search for analytics data - use the analytics tools
+
+**X (Twitter):**
+- x_search: Search X/Twitter for public posts, sentiment, mentions, or buzz about a brand, domain, @handle, or topic. Uses Grok with live X search — use this whenever the user asks what people say on Twitter/X, tweet sentiment, social mentions, or "buzz" about Databuddy (or their site) on X
+- Do NOT use web_search for Twitter/X-only questions — use x_search first. web_search does not replace live X search
+- Pass a focused query (e.g. "Databuddy analytics", "databuddy.cc", "@trydatabuddy"). If results are sparse, say so — never invent tweets or engagement numbers
 
 **Custom Events:**
 - Use custom_events_discovery to get all events with their property keys and top 5 values in a SINGLE call — preferred over calling custom_events, custom_event_properties, and custom_events_property_top_values separately.
