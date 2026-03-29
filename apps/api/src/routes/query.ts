@@ -973,7 +973,6 @@ export const query = new Elysia({ prefix: "/v1/query" })
 			mergeWideEvent({
 				websites_count: count,
 				auth_method: ctx.authMethod,
-				request_id: requestId,
 			});
 			return { success: true, requestId, websites: list, total: count };
 		})()
@@ -1090,7 +1089,6 @@ export const query = new Elysia({ prefix: "/v1/query" })
 				mergeWideEvent({
 					query_is_batch: isBatch,
 					query_count: isBatch ? body.length : 1,
-					request_id: requestId,
 				});
 
 				if (isBatch) {

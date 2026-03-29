@@ -37,11 +37,35 @@ const devFsDrain = useLocalEvlogFiles
 	? createFsDrain({ dir: devFsLogsDir, pretty: false })
 	: null;
 
+const DURATION_MS_REGEX = /^([\d.]+)(ms|s)$/;
+
+function parseDurationMs(duration: unknown): number | undefined {
+	if (typeof duration !== "string") {
+		return undefined;
+	}
+	const match = duration.match(DURATION_MS_REGEX);
+	if (!match?.[1]) {
+		return undefined;
+	}
+	return match[2] === "s"
+		? Math.round(Number.parseFloat(match[1]) * 1000)
+		: Math.round(Number.parseFloat(match[1]));
+}
+
 /**
  * In development, writes NDJSON wide events to `apps/basket/.evlog/logs/` (analyze-logs skill)
  * and still sends to Axiom via the batched pipeline. Production: Axiom only.
  */
 export async function basketLoggerDrain(ctx: DrainContext): Promise<void> {
+	if (ctx.event.method === "OPTIONS") {
+		return;
+	}
+
+	const durationMs = parseDurationMs(ctx.event.duration);
+	if (durationMs !== undefined) {
+		ctx.event.duration_ms = durationMs;
+	}
+
 	if (devFsDrain) {
 		await devFsDrain(ctx);
 	}

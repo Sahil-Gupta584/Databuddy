@@ -483,11 +483,11 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 		"/evaluate",
 		async function evaluateFlagEndpoint({ query, set }) {
 			mergeWideEvent({
-				flag_key: query.key || "missing",
-				flag_client_id: query.clientId || "missing",
+				flag_key: query.key || "",
+				flag_client_id: query.clientId || "",
 				flag_has_user_id: Boolean(query.userId),
 				flag_has_email: Boolean(query.email),
-				flag_environment: query.environment || "missing",
+				flag_environment: query.environment || "",
 			});
 
 			try {
@@ -557,10 +557,10 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 		async function bulkEvaluateFlags({ query, set }) {
 			mergeWideEvent({
 				flag_bulk: true,
-				flag_client_id: query.clientId || "missing",
+				flag_client_id: query.clientId || "",
 				flag_has_user_id: Boolean(query.userId),
 				flag_has_email: Boolean(query.email),
-				flag_environment: query.environment || "missing",
+				flag_environment: query.environment || "",
 			});
 
 			try {
@@ -633,8 +633,8 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 		"/definitions",
 		async function getDefinitionsEndpoint({ query, set }) {
 			mergeWideEvent({
-				flag_client_id: query.clientId || "missing",
-				flag_environment: query.environment || "missing",
+				flag_client_id: query.clientId || "",
+				flag_environment: query.environment || "",
 			});
 
 			try {

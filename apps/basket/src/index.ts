@@ -31,7 +31,9 @@ process.on("unhandledRejection", (reason, _promise) => {
 	captureError(reason);
 	log.error({
 		process: "unhandledRejection",
-		reason: reason instanceof Error ? reason.message : String(reason),
+		error: reason instanceof Error ? reason.message : String(reason),
+		error_stack: reason instanceof Error ? reason.stack : undefined,
+		error_source: "process",
 	});
 });
 
@@ -40,6 +42,8 @@ process.on("uncaughtException", (error) => {
 	log.error({
 		process: "uncaughtException",
 		error: error instanceof Error ? error.message : String(error),
+		error_stack: error instanceof Error ? error.stack : undefined,
+		error_source: "process",
 	});
 });
 

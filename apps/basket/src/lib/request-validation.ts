@@ -307,10 +307,7 @@ export function checkForBot(
 			);
 
 			return {
-				error: new Response(JSON.stringify({ status: "ignored" }), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				}),
+				error: new Response(null, { status: 204 }),
 			};
 		}
 
@@ -325,10 +322,7 @@ export function checkForBot(
 		);
 
 		return {
-			error: new Response(JSON.stringify({ status: "ignored" }), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}),
+			error: new Response(null, { status: 204 }),
 		};
 	});
 }
