@@ -18,6 +18,7 @@ import { Elysia } from "elysia";
 import { initLogger, log, parseError } from "evlog";
 import { evlog, useLogger } from "evlog/elysia";
 import { applyAuthWideEvent } from "@/lib/auth-wide-event";
+import { AUTUMN_API_PREFIX, withAutumnApiPath } from "@/lib/autumn-mount";
 import {
 	apiLoggerDrain,
 	enrichApiWideEvent,
@@ -278,7 +279,7 @@ const app = new Elysia({ precompile: true })
 			})
 	)
 	.use(webhooks)
-	.mount(
+	.mount(AUTUMN_API_PREFIX, (request) =>
 		autumnHandler({
 			identify: async (request) => {
 				try {
@@ -313,7 +314,7 @@ const app = new Elysia({ precompile: true })
 					return null;
 				}
 			},
-		})
+		})(withAutumnApiPath(request))
 	)
 	.use(query)
 	.use(agent)

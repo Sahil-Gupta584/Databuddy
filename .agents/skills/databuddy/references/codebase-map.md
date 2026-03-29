@@ -22,6 +22,7 @@ Use this file when the task spans multiple packages or when the right edit locat
 
 - Elysia API service
 - Default dev port: `3001`
+- **Autumn (`autumn-js/fetch`)**: Do not `mount(autumnHandler(...))` with a single argument — Elysia treats that as a catch‑all `/*` and Autumn returns `{"code":"not_found",...}` for every non‑Autumn path (breaks OpenAPI docs at `/` and `/spec.json`). Mount at `/api/autumn` and pass requests through `withAutumnApiPath` so routed paths stay under `/api/autumn` (see [`apps/api/src/lib/autumn-mount.ts`](/Users/iza/Dev/Databuddy/apps/api/src/lib/autumn-mount.ts)).
 - AI insights: [`apps/api/src/routes/insights.ts`](/Users/iza/Dev/Databuddy/apps/api/src/routes/insights.ts) — Top Pages rows include a **Human label** (opaque path segments → “Demo page”, etc.); system prompt asks for risk/watch insights in good weeks and data-grounded suggestions. Dashboard [`insight-card`](/Users/iza/Dev/Databuddy/apps/dashboard/app/(main)/insights/_components/insight-card.tsx): **Ask agent** + path-aware **View events** (`/events/stream?path=…` when a path is parsed from copy). Dedupes on cooldown-window DB keys `(websiteId|type|direction)`; failed insert returns no new insights. Funnel/MRR/retention insights require those metrics in query data—do not invent in prompts alone.
 - Handles routes such as public endpoints, webhooks, health, query, MCP, and agent-related APIs
 - Typical work:
