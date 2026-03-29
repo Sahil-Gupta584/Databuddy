@@ -122,7 +122,7 @@ async function lookupGeoLocation(ip: string): Promise<GeoResult> {
 		}
 		log.error({
 			links: "geoip_lookup",
-			error: err instanceof Error ? err.message : String(err),
+			error_message: err instanceof Error ? err.message : String(err),
 		});
 		return EMPTY_GEO;
 	}

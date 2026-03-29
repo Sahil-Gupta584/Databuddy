@@ -38,7 +38,9 @@ process.on("uncaughtException", (error) => {
 	captureError(error, { process: "uncaughtException" });
 	log.error({
 		process: "uncaughtException",
-		error: error instanceof Error ? error.message : String(error),
+		error_message: error instanceof Error ? error.message : String(error),
+		error_stack: error instanceof Error ? error.stack : undefined,
+		error_source: "process",
 	});
 });
 
@@ -47,7 +49,7 @@ process.on("SIGTERM", async () => {
 	await flushBatchedUptimeDrain().catch((error) =>
 		log.error({
 			lifecycle: "drainFlush",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	process.exit(0);
@@ -58,7 +60,7 @@ process.on("SIGINT", async () => {
 	await flushBatchedUptimeDrain().catch((error) =>
 		log.error({
 			lifecycle: "drainFlush",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
 	process.exit(0);

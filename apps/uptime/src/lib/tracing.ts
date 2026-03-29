@@ -54,7 +54,7 @@ export function captureError(
 	} catch {
 		log.error({
 			service: "uptime",
-			error: err.message,
+			error_message: err.message,
 			...(attributes ?? {}),
 		});
 	}

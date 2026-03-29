@@ -34,11 +34,51 @@ const devFsDrain = useLocalEvlogFiles
 	? createFsDrain({ dir: devFsLogsDir, pretty: false })
 	: null;
 
-/**
- * In development, writes NDJSON wide events to `apps/uptime/.evlog/logs/`
- * and still sends to Axiom via the batched pipeline. Production: Axiom only.
- */
+const DURATION_MS_REGEX = /^([\d.]+)(ms|s)$/;
+
+function normalizeWideEventForAxiom(event: Record<string, unknown>): void {
+	if (typeof event.error === "string") {
+		event.error_message = event.error;
+		event.error = undefined;
+	}
+
+	if (event.level !== "error") {
+		return;
+	}
+
+	const err = event.error;
+	if (!err || typeof err !== "object" || Array.isArray(err)) {
+		return;
+	}
+
+	const status = (err as { status?: number }).status;
+	if (typeof status === "number" && status >= 400 && status < 500) {
+		event.level = "warn";
+		event.client_http_error = true;
+	}
+}
+
+function parseDurationMs(duration: unknown): number | undefined {
+	if (typeof duration !== "string") {
+		return undefined;
+	}
+	const match = duration.match(DURATION_MS_REGEX);
+	if (!match?.[1]) {
+		return undefined;
+	}
+	return match[2] === "s"
+		? Math.round(Number.parseFloat(match[1]) * 1000)
+		: Math.round(Number.parseFloat(match[1]));
+}
+
 export async function uptimeLoggerDrain(ctx: DrainContext): Promise<void> {
+	normalizeWideEventForAxiom(ctx.event as Record<string, unknown>);
+
+	const durationMs = parseDurationMs(ctx.event.duration);
+	if (durationMs !== undefined) {
+		ctx.event.duration_ms = durationMs;
+	}
+
 	if (devFsDrain) {
 		await devFsDrain(ctx);
 	}

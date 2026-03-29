@@ -1,29 +1,14 @@
-import { opentelemetry } from "@elysiajs/opentelemetry";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { Elysia, redirect } from "elysia";
 import { initLogger, log } from "evlog";
 import { evlog } from "evlog/elysia";
-import { flushBatchedLinksDrain, linksLoggerDrain } from "./lib/evlog-links";
+import {
+	enrichLinksWideEvent,
+	flushBatchedLinksDrain,
+	linksLoggerDrain,
+} from "./lib/evlog-links";
 import { disconnectProducer } from "./lib/producer";
-import { shutdownTracing } from "./lib/tracing";
 import { expiredRoute } from "./routes/expired";
 import { redirectRoute } from "./routes/redirect";
-
-const exporter = new OTLPTraceExporter({
-	url: "https://api.axiom.co/v1/traces",
-	headers: {
-		Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
-		"X-Axiom-Dataset": process.env.AXIOM_DATASET ?? "links",
-	},
-});
-
-const batchSpanProcessor = new BatchSpanProcessor(exporter, {
-	scheduledDelayMillis: 1000,
-	exportTimeoutMillis: 30_000,
-	maxExportBatchSize: 512,
-	maxQueueSize: 2048,
-});
 
 initLogger({
 	env: { service: "links" },
@@ -34,13 +19,7 @@ initLogger({
 });
 
 const app = new Elysia()
-	.use(evlog())
-	.use(
-		opentelemetry({
-			spanProcessor: batchSpanProcessor,
-			serviceName: "links",
-		})
-	)
+	.use(evlog({ enrich: enrichLinksWideEvent }))
 	.get("/", function rootRedirect() {
 		return redirect("https://databuddy.cc", 302);
 	})
@@ -88,10 +67,10 @@ async function gracefulShutdown(signal: string) {
 	await flushBatchedLinksDrain().catch((error) =>
 		log.error({
 			lifecycle: "drainFlush",
-			error: error instanceof Error ? error.message : String(error),
+			error_message: error instanceof Error ? error.message : String(error),
 		})
 	);
-	await Promise.all([disconnectProducer(), shutdownTracing()]);
+	await disconnectProducer();
 	process.exit(0);
 }
 
