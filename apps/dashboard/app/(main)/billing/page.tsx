@@ -9,11 +9,9 @@ import {
 	TrendUpIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import type { CustomerProduct, Product } from "autumn-js";
 import { useCustomer } from "autumn-js/react";
 import Link from "next/link";
 import { useMemo } from "react";
-import AttachDialog from "@/components/autumn/attach-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { useBillingContext } from "@/components/providers/billing-provider";
 import { Badge } from "@/components/ui/badge";
@@ -26,40 +24,41 @@ import { OverviewSkeleton } from "./components/overview-skeleton";
 import { UsageRow } from "./components/usage-row";
 import { useBilling, useBillingData } from "./hooks/use-billing";
 
-type AddOnProduct = Product & { is_add_on?: boolean };
-
-function isSSOProduct(product: Product): boolean {
-	const id = product.id.toLowerCase();
+function isSSOPlan(plan: { id: string; name: string }): boolean {
+	const id = plan.id.toLowerCase();
 	if (id === "sso" || id.includes("sso")) {
 		return true;
 	}
-	const name = product.name.toLowerCase();
-	if (name.includes("single sign-on")) {
-		return true;
-	}
-	const displayName = product.display?.name?.toLowerCase() ?? "";
-	return displayName.includes("single sign-on");
+	return plan.name.toLowerCase().includes("single sign-on");
 }
 
-function getAddOnStatus(addOn: Product, customerProduct?: CustomerProduct) {
+function getAddOnStatus(
+	plan: { customerEligibility?: { status?: string } | null },
+	subscription?: {
+		canceledAt?: number | null;
+		currentPeriodEnd?: number | null;
+		status?: string;
+	}
+) {
 	const isCancelled =
-		customerProduct?.canceled_at &&
-		customerProduct?.current_period_end &&
-		dayjs(customerProduct.current_period_end).isAfter(dayjs());
+		subscription?.canceledAt &&
+		subscription?.currentPeriodEnd &&
+		dayjs(subscription.currentPeriodEnd).isAfter(dayjs());
 
+	const eligibility = plan.customerEligibility;
 	const isActive =
 		!isCancelled &&
-		(addOn.scenario === "active" ||
-			addOn.scenario === "scheduled" ||
-			customerProduct?.status === "active" ||
-			customerProduct?.status === "scheduled");
+		(eligibility?.status === "active" ||
+			eligibility?.status === "scheduled" ||
+			subscription?.status === "active" ||
+			subscription?.status === "scheduled");
 
 	return { isCancelled, isActive };
 }
 
 export default function BillingPage() {
 	const { canUserUpgrade } = useBillingContext();
-	const { products, usage, customer, isLoading, error, refetch } =
+	const { plans, usage, customer, isLoading, error, refetch } =
 		useBillingData();
 	const { attach } = useCustomer();
 	const {
@@ -73,45 +72,40 @@ export default function BillingPage() {
 	} = useBilling(refetch);
 
 	const addOns = useMemo(() => {
-		const allAddOns =
-			products?.filter((p) => (p as AddOnProduct).is_add_on) ?? [];
-		return allAddOns.filter((p) => !isSSOProduct(p));
-	}, [products]);
+		const allAddOns = plans?.filter((p) => p.addOn) ?? [];
+		return allAddOns.filter((p) => !isSSOPlan(p));
+	}, [plans]);
 
-	const { currentPlan, currentProduct, usageStats, statusDetails } =
+	const { currentPlan, currentSubscription, usageStats, statusDetails } =
 		useMemo(() => {
-			const activeCustomerProduct = customer?.products?.find((p) => {
-				if (p.canceled_at && p.current_period_end) {
-					return dayjs(p.current_period_end).isAfter(dayjs());
+			const activeSub = customer?.subscriptions?.find((s) => {
+				if (s.canceledAt && s.currentPeriodEnd) {
+					return dayjs(s.currentPeriodEnd).isAfter(dayjs());
 				}
-				return !p.canceled_at || p.status === "scheduled";
+				return !s.canceledAt || s.status === "scheduled";
 			});
 
-			const activePlan = activeCustomerProduct
-				? products?.find((p) => p.id === activeCustomerProduct.id)
-				: products?.find(
-						(p) =>
-							!(p.scenario && ["upgrade", "downgrade"].includes(p.scenario))
-					);
+			const activePlan = activeSub
+				? plans?.find((p) => p.id === activeSub.planId)
+				: plans?.find((p) => {
+						const action = p.customerEligibility?.attachAction;
+						return !(action && ["upgrade", "downgrade"].includes(action));
+					});
 
-			const planStatusDetails = activeCustomerProduct
-				? getSubscriptionStatusDetails(
-						activeCustomerProduct as Parameters<
-							typeof getSubscriptionStatusDetails
-						>[0]
-					)
+			const planStatusDetails = activeSub
+				? getSubscriptionStatusDetails(activeSub)
 				: "";
 
 			return {
 				currentPlan: activePlan,
-				currentProduct: activeCustomerProduct,
+				currentSubscription: activeSub,
 				usageStats: usage?.features ?? [],
 				statusDetails: planStatusDetails,
 			};
 		}, [
-			products,
+			plans,
 			usage?.features,
-			customer?.products,
+			customer?.subscriptions,
 			getSubscriptionStatusDetails,
 		]);
 
@@ -131,8 +125,8 @@ export default function BillingPage() {
 		);
 	}
 
-	const isFree = currentPlan?.id === "free" || currentPlan?.properties?.is_free;
-	const isCanceled = currentPlan?.scenario === "cancel";
+	const isFree = currentPlan?.id === "free" || currentPlan?.autoEnable === true;
+	const isCanceled = currentPlan?.customerEligibility?.canceling === true;
 	const isMaxPlan = currentPlan?.id === "scale";
 	const showAddOns = addOns.length > 0 && !isFree;
 
@@ -179,10 +173,12 @@ export default function BillingPage() {
 							<h3 className="font-semibold">Current Plan</h3>
 							<Badge
 								variant={
-									currentProduct?.status === "scheduled" ? "outline" : "green"
+									currentSubscription?.status === "scheduled"
+										? "outline"
+										: "green"
 								}
 							>
-								{currentProduct?.status === "scheduled"
+								{currentSubscription?.status === "scheduled"
 									? "Scheduled"
 									: "Active"}
 							</Badge>
@@ -196,12 +192,10 @@ export default function BillingPage() {
 								/>
 							</div>
 							<div>
-								<div className="font-medium">
-									{currentPlan?.display?.name || currentPlan?.name || "Free"}
-								</div>
-								{!isFree && currentPlan?.items[0]?.display?.primary_text && (
+								<div className="font-medium">{currentPlan?.name || "Free"}</div>
+								{!isFree && currentPlan?.price?.display?.primaryText && (
 									<div className="text-muted-foreground text-sm">
-										{currentPlan.items[0].display.primary_text}
+										{currentPlan.price.display.primaryText}
 									</div>
 								)}
 							</div>
@@ -218,7 +212,7 @@ export default function BillingPage() {
 					<div className="grid gap-5 p-5 sm:grid-cols-2 lg:grid-cols-1 lg:gap-0 lg:p-0">
 						<div className="w-full lg:w-auto lg:border-b lg:p-5">
 							<h3 className="mb-3 font-semibold">Payment Method</h3>
-							<CreditCardDisplay customer={customer} />
+							<CreditCardDisplay customer={customer ?? null} />
 						</div>
 
 						<div className="flex w-full flex-col gap-2 lg:w-auto lg:p-5">
@@ -240,8 +234,8 @@ export default function BillingPage() {
 													currentPlan &&
 													onCancelClick(
 														currentPlan.id,
-														currentPlan.display?.name || currentPlan.name,
-														currentProduct?.current_period_end ?? undefined
+														currentPlan.name,
+														currentSubscription?.currentPeriodEnd ?? undefined
 													)
 												}
 												variant="outline"
@@ -286,14 +280,11 @@ export default function BillingPage() {
 							</div>
 							<div className="space-y-2">
 								{addOns.map((addOn) => {
-									const customerProduct = customer?.products?.find(
-										(cp) => cp.id === addOn.id
+									const sub = customer?.subscriptions?.find(
+										(s) => s.planId === addOn.id
 									);
-									const { isCancelled, isActive } = getAddOnStatus(
-										addOn,
-										customerProduct
-									);
-									const priceDisplay = addOn.items[0]?.display;
+									const { isCancelled, isActive } = getAddOnStatus(addOn, sub);
+									const priceDisplay = addOn.items.at(0)?.display;
 
 									return (
 										<div
@@ -302,13 +293,13 @@ export default function BillingPage() {
 										>
 											<div className="min-w-0 flex-1">
 												<div className="truncate font-medium text-sm">
-													{addOn.display?.name || addOn.name}
+													{addOn.name}
 												</div>
 												<div className="text-muted-foreground text-xs">
-													{isCancelled && customerProduct?.current_period_end
-														? `Access until ${dayjs(customerProduct.current_period_end).format("MMM D, YYYY")}`
-														: priceDisplay?.primary_text &&
-															`${priceDisplay.primary_text}${priceDisplay.secondary_text ? ` ${priceDisplay.secondary_text}` : ""}`}
+													{isCancelled && sub?.currentPeriodEnd
+														? `Access until ${dayjs(sub.currentPeriodEnd).format("MMM D, YYYY")}`
+														: priceDisplay?.primaryText &&
+															`${priceDisplay.primaryText}${priceDisplay.secondaryText ? ` ${priceDisplay.secondaryText}` : ""}`}
 												</div>
 											</div>
 											{isCancelled ? (
@@ -321,9 +312,8 @@ export default function BillingPage() {
 															onClick={() =>
 																onCancelClick(
 																	addOn.id,
-																	addOn.display?.name || addOn.name,
-																	customerProduct?.current_period_end ??
-																		undefined
+																	addOn.name,
+																	sub?.currentPeriodEnd ?? undefined
 																)
 															}
 															size="sm"
@@ -337,8 +327,7 @@ export default function BillingPage() {
 												<Button
 													onClick={() =>
 														attach({
-															productId: addOn.id,
-															dialog: AttachDialog,
+															planId: addOn.id,
 														})
 													}
 													size="sm"

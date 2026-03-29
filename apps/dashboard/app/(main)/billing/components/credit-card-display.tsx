@@ -15,7 +15,7 @@ export function CreditCardDisplay({ customer }: CreditCardDisplayProps) {
 		true
 	);
 
-	const paymentMethod = customer?.payment_method;
+	const paymentMethod = customer?.paymentMethod;
 	const card = paymentMethod?.card;
 
 	if (!card) {
@@ -32,10 +32,10 @@ export function CreditCardDisplay({ customer }: CreditCardDisplayProps) {
 	}
 
 	const cardHolder =
-		paymentMethod?.billing_details?.name || customer?.name || "CARD HOLDER";
+		paymentMethod?.billingDetails?.name || customer?.name || "CARD HOLDER";
 	const last4 = card.last4 || "****";
-	const expMonth = card.exp_month?.toString().padStart(2, "0") || "00";
-	const expYear = card.exp_year?.toString().slice(-2) || "00";
+	const expMonth = card.expMonth?.toString().padStart(2, "0") || "00";
+	const expYear = card.expYear?.toString().slice(-2) || "00";
 	const cardNumber = `•••• •••• •••• ${last4}`;
 	const expiration = `${expMonth}/${expYear}`;
 	const brand = (card.brand || "card").toLowerCase();

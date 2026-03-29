@@ -19,17 +19,10 @@ import {
 	StarIcon,
 	WarningIcon,
 } from "@phosphor-icons/react";
-import type { Product, ProductItem } from "autumn-js";
-import {
-	type ProductDetails,
-	useCustomer,
-	usePricingTable,
-} from "autumn-js/react";
+import { useCustomer, useListPlans } from "autumn-js/react";
 import { createContext, useContext, useState } from "react";
 import { PricingTiersTooltip } from "@/app/(main)/billing/components/pricing-tiers-tooltip";
 import { getStripeMetadata } from "@/app/(main)/billing/utils/stripe-metadata";
-import { formatLocaleNumber } from "@/lib/format-locale-number";
-import AttachDialog from "@/components/autumn/attach-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +35,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { getPricingTableContent } from "@/lib/autumn/pricing-table-content";
+import { formatLocaleNumber } from "@/lib/format-locale-number";
 import { cn } from "@/lib/utils";
 
 const PLAN_ICONS: Record<string, typeof CrownIcon> = {
@@ -161,26 +155,24 @@ function PricingTableSkeleton() {
 	);
 }
 
+type HookPlan = NonNullable<ReturnType<typeof useListPlans>["data"]>[number];
+
 const PricingTableContext = createContext<{
-	products: Product[];
+	plans: HookPlan[];
 	selectedPlan?: string | null;
-}>({ products: [], selectedPlan: null });
+}>({ plans: [], selectedPlan: null });
 
 function usePricingTableCtx() {
 	return useContext(PricingTableContext);
 }
 
 export default function PricingTable({
-	productDetails,
 	selectedPlan,
 }: {
-	productDetails?: ProductDetails[];
 	selectedPlan?: string | null;
 }) {
 	const { attach } = useCustomer();
-	const { products, isLoading, error } = usePricingTable({
-		productDetails,
-	});
+	const { data: plans, isLoading, error } = useListPlans();
 
 	if (isLoading) {
 		return (
@@ -205,27 +197,23 @@ export default function PricingTable({
 		);
 	}
 
-	const filteredProducts =
-		products?.filter((p) => ["hobby", "pro", "scale"].includes(p.id)) ?? [];
+	const filteredPlans =
+		plans?.filter((p) => ["hobby", "pro", "scale"].includes(p.id)) ?? [];
 
 	return (
-		<PricingTableContext.Provider
-			value={{ products: products ?? [], selectedPlan }}
-		>
+		<PricingTableContext.Provider value={{ plans: plans ?? [], selectedPlan }}>
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{filteredProducts.map((plan) => (
+				{filteredPlans.map((plan) => (
 					<PricingCard
 						attachAction={async () => {
 							await attach({
-								productId: plan.id,
-								dialog: AttachDialog,
+								planId: plan.id,
 								metadata: getStripeMetadata(),
-								...(plan.id === "hobby" && { reward: "SAVE80" }),
 							});
 						}}
 						isSelected={selectedPlan === plan.id}
 						key={plan.id}
-						productId={plan.id}
+						planId={plan.id}
 					/>
 				))}
 			</div>
@@ -299,42 +287,43 @@ function DowngradeConfirmDialog({
 }
 
 function PricingCard({
-	productId,
+	planId,
 	className,
 	attachAction,
 	isSelected = false,
 }: {
-	productId: string;
+	planId: string;
 	className?: string;
 	attachAction?: () => Promise<void>;
 	isSelected?: boolean;
 }) {
-	const { products, selectedPlan } = usePricingTableCtx();
+	const { plans, selectedPlan } = usePricingTableCtx();
 	const { attach } = useCustomer();
 	const [showDowngradeDialog, setShowDowngradeDialog] = useState(false);
 	const [isAttaching, setIsAttaching] = useState(false);
-	const product = products.find((p) => p.id === productId);
+	const plan = plans.find((p) => p.id === planId);
 
-	if (!product) {
+	if (!plan) {
 		return null;
 	}
 
-	const { name, display: productDisplay } = product;
-	const { buttonText: defaultButtonText } = getPricingTableContent(product);
-	const isRecommended = !!productDisplay?.recommend_text;
-	const Icon = getPlanIcon(product.id);
-	const isDowngrade = product.scenario === "downgrade";
+	const eligibility = plan.customerEligibility;
+	const { buttonText: defaultButtonText } = getPricingTableContent(plan);
+	const Icon = getPlanIcon(plan.id);
+	const isDowngrade = eligibility?.attachAction === "downgrade";
 	const isDisabled =
-		product.scenario === "active" || product.scenario === "scheduled";
+		eligibility?.status === "active" || eligibility?.status === "scheduled";
+	const isRecommended = !(isDisabled || isDowngrade);
 
-	const currentProduct = products.find(
-		(p) => p.scenario === "active" || p.scenario === "scheduled"
+	const currentPlan = plans.find(
+		(p) =>
+			p.customerEligibility?.status === "active" ||
+			p.customerEligibility?.status === "scheduled"
 	);
-	const currentProductName =
-		currentProduct?.display?.name || currentProduct?.name;
+	const currentPlanName = currentPlan?.name;
 
 	const buttonText =
-		selectedPlan === productId ? (
+		selectedPlan === planId ? (
 			<span className="font-semibold">Complete Purchase →</span>
 		) : (
 			defaultButtonText
@@ -355,9 +344,10 @@ function PricingCard({
 		setIsAttaching(false);
 	};
 
-	const mainPrice = product.properties?.is_free
-		? { primary_text: "Free", secondary_text: "forever" }
-		: product.items[0]?.display;
+	const isFree = plan.autoEnable === true;
+	const mainPrice = isFree
+		? { primaryText: "Free", secondaryText: "forever" }
+		: plan.price?.display;
 
 	const supportLevels: Record<string, string> = {
 		free: "Community Support",
@@ -367,68 +357,56 @@ function PricingCard({
 		buddy: "Priority Email + Slack Support",
 	};
 
-	const extraFeatures = ["scale", "buddy"].includes(product.id)
+	const extraFeatures = ["scale", "buddy"].includes(plan.id)
 		? [
-				{ display: { primary_text: "White Glove Onboarding" } },
-				{ display: { primary_text: "Beta/Early Access" } },
+				{ display: { primaryText: "White Glove Onboarding" } },
+				{ display: { primaryText: "Beta/Early Access" } },
 			]
 		: [];
 
-	const supportItem = supportLevels[product.id]
-		? { display: { primary_text: supportLevels[product.id] } }
+	const supportItem = supportLevels[plan.id]
+		? { display: { primaryText: supportLevels[plan.id] } }
 		: null;
 
-	// Autumn billing features (usage limits, etc.)
 	const billingItems = [
-		...(product.properties?.is_free ? product.items : product.items.slice(1)),
+		...(isFree ? plan.items : plan.items.slice(1)),
 		...extraFeatures,
 		...(supportItem ? [supportItem] : []),
 	];
 
-	// Gated features new to this plan
-	const newGatedFeatures = getNewFeaturesForPlan(product.id);
+	const newGatedFeatures = getNewFeaturesForPlan(plan.id);
 
 	return (
 		<div
 			className={cn(
 				"relative flex flex-col rounded border bg-card",
-				isRecommended && "border-primary",
 				isSelected && "border-primary ring-2 ring-primary/20",
 				className
 			)}
 		>
-			{isRecommended && (
-				<Badge className="absolute top-3 right-3 bg-brand-purple text-white">
-					<StarIcon className="mr-1" size={12} weight="fill" />
-					{productDisplay?.recommend_text}
-				</Badge>
-			)}
-
 			<div className="flex items-center gap-3 p-5 pb-4">
 				<div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-accent">
 					<Icon className="text-accent-foreground" size={16} weight="duotone" />
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
-						<h3 className="truncate font-semibold">
-							{productDisplay?.name || name}
-						</h3>
+						<h3 className="truncate font-semibold">{plan.name}</h3>
 						{isSelected && (
 							<Badge className="shrink-0" variant="secondary">
 								Selected
 							</Badge>
 						)}
 					</div>
-					{productDisplay?.description && (
+					{plan.description && (
 						<p className="truncate text-muted-foreground text-sm">
-							{productDisplay.description}
+							{plan.description}
 						</p>
 					)}
 				</div>
 			</div>
 
 			<div className="dotted-bg border-y bg-accent px-5 py-4">
-				{product.id === "hobby" ? (
+				{plan.id === "hobby" ? (
 					<div className="flex flex-col gap-1">
 						<div className="flex items-baseline gap-1">
 							<span className="font-semibold text-2xl">$2</span>
@@ -441,11 +419,11 @@ function PricingCard({
 				) : (
 					<div className="flex items-baseline gap-1">
 						<span className="font-semibold text-2xl">
-							{mainPrice?.primary_text}
+							{mainPrice?.primaryText}
 						</span>
-						{mainPrice?.secondary_text && (
+						{mainPrice?.secondaryText && (
 							<span className="text-muted-foreground text-sm">
-								{mainPrice.secondary_text}
+								{mainPrice.secondaryText}
 							</span>
 						)}
 					</div>
@@ -453,16 +431,10 @@ function PricingCard({
 			</div>
 
 			<div className="flex-1 p-5">
-				{product.display?.everything_from && (
-					<p className="mb-3 text-muted-foreground text-sm">
-						Everything from {product.display.everything_from}, plus:
-					</p>
-				)}
-
 				{/* Billing features (usage limits) */}
 				<div className="space-y-2.5">
 					{billingItems.map((item) => (
-						<FeatureItem item={item} key={item.display?.primary_text} />
+						<FeatureItem item={item} key={item.display?.primaryText} />
 					))}
 				</div>
 
@@ -504,7 +476,7 @@ function PricingCard({
 			</div>
 
 			<DowngradeConfirmDialog
-				currentProductName={currentProductName}
+				currentProductName={currentPlanName}
 				isOpen={showDowngradeDialog}
 				onClose={() => setShowDowngradeDialog(false)}
 				onConfirm={async () => {
@@ -512,31 +484,37 @@ function PricingCard({
 					setIsAttaching(true);
 					try {
 						await attach({
-							productId: product.id,
-							dialog: AttachDialog,
+							planId: plan.id,
 							metadata: getStripeMetadata(),
-							...(product.id === "hobby" && { reward: "SAVE80" }),
 						});
 					} catch {
 						// Error handled by attach
 					}
 					setIsAttaching(false);
 				}}
-				productName={productDisplay?.name || name}
+				productName={plan.name}
 			/>
 		</div>
 	);
 }
 
-function FeatureItem({ item }: { item: ProductItem }) {
-	const featureItem = item as ProductItem & {
-		tiers?: { to: number | "inf"; amount: number }[];
-	};
-	const hasTiers = featureItem.tiers && featureItem.tiers.length > 0;
+interface FeatureItemDisplay {
+	display?: { primaryText?: string; secondaryText?: string };
+	price?: {
+		tiers?: Array<{ to: number | "inf"; amount: number } | null> | null;
+	} | null;
+}
 
-	let secondaryText = featureItem.display?.secondary_text;
-	if (hasTiers && featureItem.tiers) {
-		const firstPaidTier = featureItem.tiers.find((t) => t.amount > 0);
+function FeatureItem({ item }: { item: FeatureItemDisplay }) {
+	const rawTiers = item.price?.tiers;
+	const tiers = rawTiers?.filter(
+		(t): t is { to: number | "inf"; amount: number } => t !== null
+	);
+	const hasTiers = tiers && tiers.length > 0;
+
+	let secondaryText = item.display?.secondaryText;
+	if (hasTiers) {
+		const firstPaidTier = tiers.find((t) => t.amount > 0);
 		secondaryText = firstPaidTier
 			? `then $${firstPaidTier.amount.toFixed(6)}/event`
 			: "Included";
@@ -549,15 +527,13 @@ function FeatureItem({ item }: { item: ProductItem }) {
 				weight="bold"
 			/>
 			<div className="flex flex-col">
-				<span>{featureItem.display?.primary_text}</span>
+				<span>{item.display?.primaryText}</span>
 				{secondaryText && (
 					<div className="flex items-center gap-1">
 						<span className="text-muted-foreground text-xs">
 							{secondaryText}
 						</span>
-						{hasTiers && featureItem.tiers && (
-							<PricingTiersTooltip showText={false} tiers={featureItem.tiers} />
-						)}
+						{hasTiers && <PricingTiersTooltip showText={false} tiers={tiers} />}
 					</div>
 				)}
 			</div>
@@ -601,7 +577,9 @@ function GatedFeatureItem({
 				<div className="flex items-center gap-2">
 					<span>{name}</span>
 					{isNew && (
-						<Badge className="bg-brand-purple/10 text-brand-purple text-xs">New</Badge>
+						<Badge className="bg-brand-purple/10 text-brand-purple text-xs">
+							New
+						</Badge>
 					)}
 				</div>
 				{limitText && (

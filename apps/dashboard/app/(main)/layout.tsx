@@ -15,6 +15,7 @@ export default function MainLayout({
 	return (
 		<AutumnProvider
 			backendUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}
+			includeCredentials
 		>
 			<BillingProvider>
 				<CommandSearchProvider>

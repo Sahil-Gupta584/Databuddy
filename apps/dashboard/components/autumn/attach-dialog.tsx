@@ -1,11 +1,9 @@
 "use client";
 
 import { CircleNotchIcon } from "@phosphor-icons/react";
-import type { CheckProductPreview } from "autumn-js";
-import { useCustomer } from "autumn-js/react";
+import type { PreviewAttachResponse } from "autumn-js";
 import type React from "react";
-import { useEffect, useState } from "react";
-import { getStripeMetadata } from "@/app/(main)/billing/utils/stripe-metadata";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -15,77 +13,42 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { getAttachContent } from "@/lib/autumn/attach-content";
 import { cn } from "@/lib/utils";
 
 export interface AttachDialogProps {
 	open: boolean;
 	setOpen: (open: boolean) => void;
-	preview: CheckProductPreview;
-	onClick: (options?: any) => Promise<void>;
+	preview: PreviewAttachResponse;
+	planId: string;
+	onConfirm: () => Promise<void>;
 }
 
-export default function AttachDialog(params?: AttachDialogProps) {
-	const { attach } = useCustomer();
+export default function AttachDialog({
+	open,
+	setOpen,
+	preview,
+	onConfirm,
+}: AttachDialogProps) {
 	const [loading, setLoading] = useState(false);
-	const [optionsInput, setOptionsInput] = useState<FeatureOption[]>(
-		params?.preview?.options || []
-	);
-
-	const getTotalPrice = () => {
-		let sum = due_today?.price || 0;
-		for (const option of optionsInput) {
-			if (option.price && option.quantity) {
-				sum += option.price * (option.quantity / option.billing_units);
-			}
-		}
-		return sum;
-	};
-
-	useEffect(() => {
-		setOptionsInput(params?.preview?.options || []);
-	}, [params?.preview?.options]);
-
-	if (!params?.preview) {
-		return null;
-	}
-
-	const { open, setOpen, preview } = params;
-	const { due_today } = preview;
-	const { title, message } = getAttachContent(preview);
 
 	return (
 		<Dialog onOpenChange={setOpen} open={open}>
 			<DialogContent className="w-[95vw] max-w-md sm:w-full">
 				<DialogHeader>
-					<DialogTitle>{title}</DialogTitle>
-					<DialogDescription>{message}</DialogDescription>
+					<DialogTitle>Confirm Subscription</DialogTitle>
+					<DialogDescription>
+						By clicking confirm, your payment method will be charged.
+					</DialogDescription>
 				</DialogHeader>
 
-				{/* Options Input (if any configurable options) */}
-				{optionsInput.length > 0 && (
-					<div className="space-y-2">
-						{optionsInput.map((option, index) => (
-							<OptionsInput
-								index={index}
-								key={option.feature_name}
-								option={option as FeatureOptionWithRequiredPrice}
-								optionsInput={optionsInput}
-								setOptionsInput={setOptionsInput}
-							/>
-						))}
-					</div>
-				)}
-
-				{/* Due Today */}
-				{due_today && (
+				{preview.total > 0 && (
 					<div className="flex items-center justify-between rounded border bg-accent/50 px-3 py-2">
 						<span className="text-muted-foreground text-sm">Due today</span>
 						<span className="font-semibold">
 							{new Intl.NumberFormat("en-US", {
 								style: "currency",
-								currency: due_today.currency,
-							}).format(getTotalPrice())}
+								currency: preview.currency,
+							}).format(preview.total)}
 						</span>
 					</div>
 				)}
@@ -96,16 +59,12 @@ export default function AttachDialog(params?: AttachDialogProps) {
 						disabled={loading}
 						onClick={async () => {
 							setLoading(true);
-							await attach({
-								productId: preview.product_id,
-								options: optionsInput.map((option) => ({
-									featureId: option.feature_id,
-									quantity: option.quantity || 0,
-								})),
-								metadata: getStripeMetadata(),
-							});
-							setOpen(false);
-							setLoading(false);
+							try {
+								await onConfirm();
+								setOpen(false);
+							} finally {
+								setLoading(false);
+							}
 						}}
 					>
 						{loading && (
@@ -137,54 +96,6 @@ export const PriceItem = ({
 		{children}
 	</div>
 );
-
-interface FeatureOption {
-	feature_id: string;
-	feature_name: string;
-	billing_units: number;
-	price?: number;
-	quantity?: number;
-}
-
-interface FeatureOptionWithRequiredPrice
-	extends Omit<FeatureOption, "price" | "quantity"> {
-	price: number;
-	quantity: number;
-}
-
-export const OptionsInput = ({
-	option,
-	optionsInput,
-	setOptionsInput,
-	index,
-}: {
-	option: FeatureOptionWithRequiredPrice;
-	optionsInput: FeatureOption[];
-	setOptionsInput: (options: FeatureOption[]) => void;
-	index: number;
-} & React.HTMLAttributes<HTMLDivElement>) => {
-	const { feature_name, billing_units, quantity, price } = option;
-	return (
-		<PriceItem key={feature_name}>
-			<span>{feature_name}</span>
-			<QuantityInput
-				key={feature_name}
-				onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-					const newOptions = [...optionsInput];
-					newOptions[index].quantity =
-						Number.parseInt(e.target.value, 10) * billing_units;
-					setOptionsInput(newOptions);
-				}}
-				value={quantity ? quantity / billing_units : ""}
-			>
-				<span className="">
-					× ${price} per {billing_units === 1 ? " " : billing_units}{" "}
-					{feature_name}
-				</span>
-			</QuantityInput>
-		</PriceItem>
-	);
-};
 
 export const QuantityInput = ({
 	children,

@@ -8,7 +8,7 @@ import {
 	ReceiptIcon,
 	XCircleIcon,
 } from "@phosphor-icons/react";
-import type { CustomerInvoice } from "autumn-js";
+import type { Invoice } from "autumn-js";
 import { memo, useMemo } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { RightSidebar } from "@/components/right-sidebar";
@@ -26,16 +26,16 @@ export default function HistoryPage() {
 
 	const invoices = customerData?.invoices ?? [];
 	const sortedInvoices = useMemo(
-		() => [...invoices].sort((a, b) => b.created_at - a.created_at),
+		() => [...invoices].sort((a, b) => b.createdAt - a.createdAt),
 		[invoices]
 	);
 
 	const subscriptionHistory = useMemo(() => {
-		if (!customerData?.products?.length) {
+		if (!customerData?.subscriptions?.length) {
 			return [];
 		}
-		return customerData.products;
-	}, [customerData?.products]);
+		return customerData.subscriptions;
+	}, [customerData?.subscriptions]);
 
 	if (isLoading) {
 		return (
@@ -69,7 +69,7 @@ export default function HistoryPage() {
 					) : (
 						<div className="divide-y">
 							{sortedInvoices.map((invoice) => (
-								<InvoiceRow invoice={invoice} key={invoice.stripe_id} />
+								<InvoiceRow invoice={invoice} key={invoice.stripeId} />
 							))}
 						</div>
 					)}
@@ -86,8 +86,8 @@ export default function HistoryPage() {
 							</p>
 						) : (
 							<div className="space-y-3">
-								{subscriptionHistory.map((product) => (
-									<SubscriptionItem key={product.id} product={product} />
+								{subscriptionHistory.map((sub) => (
+									<SubscriptionItem key={sub.id} sub={sub} />
 								))}
 							</div>
 						)}
@@ -117,10 +117,10 @@ export default function HistoryPage() {
 const InvoiceRow = memo(function InvoiceRowComponent({
 	invoice,
 }: {
-	invoice: CustomerInvoice;
+	invoice: Invoice;
 }) {
 	const status = getInvoiceStatus(invoice.status);
-	const formattedDate = dayjs(invoice.created_at).format("MMM D, YYYY");
+	const formattedDate = dayjs(invoice.createdAt).format("MMM D, YYYY");
 	const amount = formatCurrency(invoice.total, invoice.currency);
 
 	return (
@@ -156,7 +156,7 @@ const InvoiceRow = memo(function InvoiceRowComponent({
 					<div>
 						<div className="flex items-center gap-2">
 							<span className="font-medium">
-								Invoice #{invoice.stripe_id.slice(-8)}
+								Invoice #{invoice.stripeId.slice(-8)}
 							</span>
 							<Badge variant={status.variant}>{status.label}</Badge>
 						</div>
@@ -168,11 +168,13 @@ const InvoiceRow = memo(function InvoiceRowComponent({
 					</div>
 				</div>
 
-				{invoice.hosted_invoice_url && (
+				{invoice.hostedInvoiceUrl && (
 					<Button
 						aria-label="View invoice"
 						className="shrink-0"
-						onClick={() => window.open(invoice.hosted_invoice_url, "_blank")}
+						onClick={() =>
+							window.open(invoice.hostedInvoiceUrl ?? "", "_blank")
+						}
 						size="sm"
 						variant="secondary"
 					>
@@ -185,21 +187,22 @@ const InvoiceRow = memo(function InvoiceRowComponent({
 	);
 });
 
-interface ProductStatus {
-	id: string;
-	name?: string | null;
-	status?: string;
-	started_at?: number | null;
-	current_period_end?: number | null;
-	canceled_at?: number | null;
-}
-
-function SubscriptionItem({ product }: { product: ProductStatus }) {
-	const renewalDate = product.current_period_end
-		? dayjs(product.current_period_end)
-		: null;
-	const isCanceled = !!product.canceled_at;
-	const isActive = product.status === "active";
+function SubscriptionItem({
+	sub,
+}: {
+	sub: {
+		id: string;
+		planId: string;
+		plan?: { name?: string } | null;
+		canceledAt?: number | null;
+		currentPeriodEnd?: number | null;
+		status?: string;
+		startedAt?: number | null;
+	};
+}) {
+	const renewalDate = sub.currentPeriodEnd ? dayjs(sub.currentPeriodEnd) : null;
+	const isCanceled = !!sub.canceledAt;
+	const isActive = sub.status === "active";
 
 	return (
 		<div className="flex items-start gap-3">
@@ -218,7 +221,7 @@ function SubscriptionItem({ product }: { product: ProductStatus }) {
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
 					<span className="truncate font-medium text-sm">
-						{product.name || product.id}
+						{sub.plan?.name ?? sub.planId}
 					</span>
 					{isActive && (
 						<Badge className="bg-primary/10 text-primary" variant="secondary">
@@ -227,9 +230,7 @@ function SubscriptionItem({ product }: { product: ProductStatus }) {
 					)}
 				</div>
 				<div className="text-muted-foreground text-xs">
-					{product.started_at && (
-						<span>Started {dayjs(product.started_at).fromNow()}</span>
-					)}
+					<span>Started {dayjs(sub.startedAt).fromNow()}</span>
 					{renewalDate && (
 						<span className="ml-2">
 							· {isCanceled ? "Ends" : "Renews"} {renewalDate.fromNow()}
@@ -241,7 +242,7 @@ function SubscriptionItem({ product }: { product: ProductStatus }) {
 	);
 }
 
-function BillingSummary({ invoices }: { invoices: CustomerInvoice[] }) {
+function BillingSummary({ invoices }: { invoices: Invoice[] }) {
 	const stats = useMemo(() => {
 		const paid = invoices.filter((i) => i.status === "paid");
 		const totalPaid = paid.reduce((sum, i) => sum + i.total, 0);
@@ -252,7 +253,7 @@ function BillingSummary({ invoices }: { invoices: CustomerInvoice[] }) {
 			paidInvoices: paid.length,
 			totalSpent: formatCurrency(totalPaid, currency),
 			lastPayment: paid[0]
-				? dayjs(paid[0].created_at).format("MMM D, YYYY")
+				? dayjs(paid[0].createdAt).format("MMM D, YYYY")
 				: "N/A",
 		};
 	}, [invoices]);

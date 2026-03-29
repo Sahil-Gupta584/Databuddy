@@ -11,6 +11,7 @@ export default function PublicLayout({
 	return (
 		<AutumnProvider
 			backendUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}
+			includeCredentials
 		>
 			<BillingProvider>
 				<div className="h-dvh overflow-hidden text-foreground">{children}</div>

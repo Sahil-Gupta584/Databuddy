@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense } from "react";
 import { AutumnProvider } from "autumn-js/react";
 import { parseAsBoolean, useQueryState } from "nuqs";
+import { Suspense } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { BillingProvider } from "@/components/providers/billing-provider";
 
@@ -41,6 +41,7 @@ export default function DemoLayout({
 	return (
 		<AutumnProvider
 			backendUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}
+			includeCredentials
 		>
 			<BillingProvider>
 				<DemoLayoutContent>{children}</DemoLayoutContent>

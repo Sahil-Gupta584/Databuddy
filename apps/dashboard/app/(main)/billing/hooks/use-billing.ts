@@ -1,15 +1,12 @@
-import type { CustomerProduct } from "autumn-js";
-import { useCustomer, usePricingTable } from "autumn-js/react";
+import { useCustomer, useListPlans } from "autumn-js/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import AttachDialog from "@/components/autumn/attach-dialog";
 import dayjs from "@/lib/dayjs";
 import { trackCancelFeedbackAction } from "../actions/cancel-feedback-action";
 import type { CancelFeedback } from "../components/cancel-subscription-dialog";
 import {
 	calculateFeatureUsage,
 	type FeatureUsage,
-	type PricingTier,
 } from "../utils/feature-usage";
 import { getStripeMetadata } from "../utils/stripe-metadata";
 
@@ -22,20 +19,20 @@ export interface CancelTarget {
 	currentPeriodEnd?: number;
 }
 
-export type { Customer, CustomerInvoice as Invoice } from "autumn-js";
+export type { Customer, Invoice } from "autumn-js";
 export type { CancelFeedback } from "../components/cancel-subscription-dialog";
 export type { CustomerWithPaymentMethod } from "../types/billing";
 
 export function useBilling(refetch?: () => void) {
-	const { attach, cancel, check, track, openBillingPortal } = useCustomer();
+	const { attach, updateSubscription, check, openCustomerPortal } =
+		useCustomer();
 	const [isLoading, setIsLoading] = useState(false);
 	const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
 
 	const handleUpgrade = async (planId: string) => {
 		try {
 			await attach({
-				productId: planId,
-				dialog: AttachDialog,
+				planId,
 				successUrl: `${window.location.origin}/billing`,
 				metadata: getStripeMetadata(),
 			});
@@ -49,9 +46,11 @@ export function useBilling(refetch?: () => void) {
 	const handleCancel = async (planId: string, immediate = false) => {
 		setIsLoading(true);
 		try {
-			await cancel({
-				productId: planId,
-				...(immediate && { cancelImmediately: true }),
+			await updateSubscription({
+				planId,
+				cancelAction: immediate
+					? "cancel_immediately"
+					: "cancel_end_of_cycle",
 			});
 			toast.success(
 				immediate
@@ -72,15 +71,20 @@ export function useBilling(refetch?: () => void) {
 		}
 	};
 
-	const getSubscriptionStatusDetails = (product: CustomerProduct) => {
-		if (product.canceled_at && product.current_period_end) {
-			return `Access until ${dayjs(product.current_period_end).format("MMM D, YYYY")}`;
+	const getSubscriptionStatusDetails = (sub: {
+		canceledAt?: number | null;
+		currentPeriodEnd?: number | null;
+		status?: string;
+		startedAt?: number | null;
+	}) => {
+		if (sub.canceledAt && sub.currentPeriodEnd) {
+			return `Access until ${dayjs(sub.currentPeriodEnd).format("MMM D, YYYY")}`;
 		}
-		if (product.status === "scheduled") {
-			return `Starts on ${dayjs(product.started_at).format("MMM D, YYYY")}`;
+		if (sub.status === "scheduled") {
+			return `Starts on ${dayjs(sub.startedAt).format("MMM D, YYYY")}`;
 		}
-		if (product.current_period_end) {
-			return `Renews on ${dayjs(product.current_period_end).format("MMM D, YYYY")}`;
+		if (sub.currentPeriodEnd) {
+			return `Renews on ${dayjs(sub.currentPeriodEnd).format("MMM D, YYYY")}`;
 		}
 		return "";
 	};
@@ -108,9 +112,10 @@ export function useBilling(refetch?: () => void) {
 		},
 		onCancelDialogClose: () => setCancelTarget(null),
 		onManageBilling: () =>
-			openBillingPortal({ returnUrl: `${window.location.origin}/billing` }),
+			openCustomerPortal({
+				returnUrl: `${window.location.origin}/billing`,
+			}),
 		check,
-		track,
 		showCancelDialog: !!cancelTarget,
 		cancelTarget,
 		getSubscriptionStatusDetails,
@@ -119,69 +124,40 @@ export function useBilling(refetch?: () => void) {
 
 export function useBillingData() {
 	const {
-		customer,
+		data: customer,
 		isLoading: isCustomerLoading,
 		error: customerError,
 		refetch: refetchCustomer,
 	} = useCustomer({ expand: ["invoices", "payment_method"] });
 
 	const {
-		products,
-		isLoading: isPricingLoading,
-		refetch: refetchPricing,
-	} = usePricingTable();
+		data: plans,
+		isLoading: isPlansLoading,
+		refetch: refetchPlans,
+	} = useListPlans();
 
-	const featureConfig = useMemo(() => {
-		const limits: Record<string, number> = {};
-		const tiers: Record<string, PricingTier[]> = {};
-
-		const activeProduct = customer?.products?.find(
-			(p) =>
-				p.status === "active" ||
-				(p.canceled_at && dayjs(p.current_period_end).isAfter(dayjs()))
-		);
-
-		for (const item of activeProduct?.items ?? []) {
-			if (item.feature_id) {
-				if (typeof item.included_usage === "number") {
-					limits[item.feature_id] = item.included_usage;
-				}
-				// Tiers exist on priced_feature items but aren't in the type
-				const itemTiers = (item as { tiers?: PricingTier[] }).tiers;
-				if (Array.isArray(itemTiers)) {
-					tiers[item.feature_id] = itemTiers;
-				}
-			}
-		}
-
-		return { limits, tiers };
-	}, [customer?.products]);
-
-	const usage: Usage = {
-		features: customer?.features
-			? Object.values(customer.features).map((f) =>
-					calculateFeatureUsage(
-						f,
-						featureConfig.limits[f.id],
-						featureConfig.tiers[f.id]
-					)
+	const usage: Usage = useMemo(
+		() => ({
+			features: customer?.balances
+				? Object.values(customer.balances).map((bal) =>
+					calculateFeatureUsage(bal)
 				)
-			: [],
-	};
+				: [],
+		}),
+		[customer?.balances]
+	);
 
 	const refetch = () => {
 		refetchCustomer();
-		if (typeof refetchPricing === "function") {
-			refetchPricing();
-		}
+		refetchPlans();
 	};
 
 	return {
-		products: products ?? [],
+		plans: plans ?? [],
 		usage,
 		customer,
 		customerData: customer,
-		isLoading: isCustomerLoading || isPricingLoading,
+		isLoading: isCustomerLoading || isPlansLoading,
 		error: customerError,
 		refetch,
 	};
