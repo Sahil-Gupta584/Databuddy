@@ -24,12 +24,17 @@ This file is **intentionally small**. It grows as we lock patterns. **Interactio
 - Use `flex-wrap` with `gap-x-5 gap-y-1` so the bar wraps cleanly on mobile without breaking the 10px grid.
 - Canonical reference: `apps/dashboard/app/(main)/monitors/[id]/page.tsx` → `StatusIndicator` + stats bar.
 
-## Row items (list pages)
+## DataList — list pages
 
-- Row wrapper: single `<Link>` as root, `group flex w-full items-center gap-3 border-b px-3 py-3 transition-colors hover:bg-accent/50 sm:gap-4 sm:px-4`.
-- Leading icon: `size-9` container with `rounded border bg-card`, `FaviconImage` at `size={18}` with a Phosphor fallback.
-- Actions: `size-7` ghost button, `opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100`, wrapped in a stop-propagation `div`.
-- Canonical reference: `components/monitors/monitor-row.tsx`, `apps/dashboard/app/(main)/links/_components/link-item.tsx`.
+All list views use the `DataList` compound component (`components/data-list.tsx`). Wrap in `<DataList className="rounded bg-card">` — no border on root.
+
+- **Row defaults:** `align="start"` for wrapping text, `align="center"` for single-line rows (e.g. flags). `w-full` is built-in — don't repeat it.
+- **Cell defaults:** `shrink-0` and `min-w-0` are built-in — don't repeat them. `text-start` is the browser default — don't add it.
+- **Inactive/paused state:** `opacity-50` on the Row, not a badge.
+- **`pt-0.5`** on non-text cells (icons, stats, actions) to align with text baseline in `items-start` rows. Omit in `items-center` rows.
+- **Icon containers:** `size-8 rounded` with semantic `bg-{color}-500/10 text-{color}-600 dark:text-{color}-400`. Use a `TYPE_CONFIG` const map when multiple types exist.
+- **Skeletons:** plain `div`s, not `DataList.Row`. Merge name + secondary into one `flex-1` block.
+- Canonical refs: `monitor-row.tsx`, `funnel-item.tsx`, `goal-item.tsx`, `flags-list.tsx`.
 
 ## Component reuse principle
 

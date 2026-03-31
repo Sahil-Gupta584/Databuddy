@@ -2,12 +2,11 @@
 
 import { GATED_FEATURES } from "@databuddy/shared/types/features";
 import { FunnelIcon } from "@phosphor-icons/react/dist/ssr/Funnel";
-import { TrendDownIcon } from "@phosphor-icons/react/dist/ssr/TrendDown";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { DataList } from "@/components/data-list";
 import { FeatureGate } from "@/components/feature-gate";
-import { Card, CardContent } from "@/components/ui/card";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { useAutocompleteData } from "@/hooks/use-autocomplete";
 import { useDateFilters } from "@/hooks/use-date-filters";
@@ -36,11 +35,11 @@ const EditFunnelDialog = dynamic(
 
 function FunnelsListSkeleton() {
 	return (
-		<div>
+		<DataList className="rounded bg-card">
 			{[1, 2, 3].map((i) => (
 				<FunnelItemSkeleton key={i} />
 			))}
-		</div>
+		</DataList>
 	);
 }
 
@@ -58,6 +57,7 @@ export default function FunnelsPage() {
 		funnels,
 		analyticsMap,
 		loadingIds,
+		listOutcome,
 		isLoading,
 		isFetching,
 		error,
@@ -130,27 +130,6 @@ export default function FunnelsPage() {
 		}
 	};
 
-	if (error) {
-		return (
-			<div className="p-4">
-				<Card className="border-destructive/20 bg-destructive/5">
-					<CardContent className="pt-6">
-						<div className="flex items-center gap-2">
-							<TrendDownIcon
-								className="size-5 text-destructive"
-								weight="duotone"
-							/>
-							<p className="font-medium text-destructive">
-								Error loading funnel data
-							</p>
-						</div>
-						<p className="mt-2 text-destructive/80 text-sm">{error.message}</p>
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
-
 	return (
 		<FeatureGate feature={GATED_FEATURES.FUNNELS}>
 			<div className="relative flex h-full flex-col">
@@ -159,7 +138,7 @@ export default function FunnelsPage() {
 					currentUsage={funnels.length}
 					description="Track user journeys and optimize conversion drop-off points"
 					feature={GATED_FEATURES.FUNNELS}
-					hasError={!!error}
+					hasError={listOutcome.status === "error"}
 					icon={
 						<FunnelIcon
 							className="size-6 text-accent-foreground"
@@ -180,49 +159,79 @@ export default function FunnelsPage() {
 				/>
 
 				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
-					{isLoading ? (
-						<FunnelsListSkeleton />
-					) : (
-						<FunnelsList
-							analyticsMap={analyticsMap}
-							expandedFunnelId={expandedId}
-							funnels={funnels ?? []}
-							loadingAnalyticsIds={loadingIds}
-							onCreateFunnel={() => setEditing("new")}
-							onDeleteFunnel={setDeletingId}
-							onEditFunnel={(funnel) => setEditing(funnel)}
-							onToggleFunnel={(funnelId) => {
-								setExpandedId(expandedId === funnelId ? null : funnelId);
-								setSelectedReferrer("all");
-							}}
-						>
-							{(funnel) => {
-								if (expandedId !== funnel.id) {
-									return null;
-								}
+					<DataList.Content
+						emptyProps={{
+							action: {
+								label: "Create Your First Funnel",
+								onClick: () => setEditing("new"),
+							},
+							description:
+								"Create your first funnel to start tracking user conversion journeys and identify optimization opportunities in your user flow.",
+							icon: (
+								<FunnelIcon
+									className="size-6 text-accent-foreground"
+									weight="duotone"
+								/>
+							),
+							title: "No funnels yet",
+						}}
+						errorProps={{
+							action: { label: "Retry", onClick: () => refreshAction() },
+							description:
+								error?.message ??
+								"Something went wrong while loading funnel data.",
+							icon: (
+								<FunnelIcon
+									className="size-6 text-accent-foreground"
+									weight="duotone"
+								/>
+							),
+							title: "Failed to load funnels",
+						}}
+						loading={<FunnelsListSkeleton />}
+						outcome={listOutcome}
+					>
+						{(items) => (
+							<FunnelsList
+								analyticsMap={analyticsMap}
+								expandedFunnelId={expandedId}
+								funnels={items}
+								loadingAnalyticsIds={loadingIds}
+								onDeleteFunnel={setDeletingId}
+								onEditFunnel={(funnel) => setEditing(funnel)}
+								onToggleFunnel={(funnelId) => {
+									setExpandedId(expandedId === funnelId ? null : funnelId);
+									setSelectedReferrer("all");
+								}}
+							>
+								{(funnel) => {
+									if (expandedId !== funnel.id) {
+										return null;
+									}
 
-								return (
-									<div className="space-y-4">
-										<FunnelAnalyticsByReferrer
-											data={referrerData}
-											error={referrerError}
-											isLoading={referrerLoading}
-											onReferrerChange={setSelectedReferrer}
-										/>
+									return (
+										<div className="space-y-4">
+											<FunnelAnalyticsByReferrer
+												data={referrerData}
+												error={referrerError}
+												isLoading={referrerLoading}
+												onReferrerChange={setSelectedReferrer}
+											/>
 
-										<FunnelAnalytics
-											data={analyticsData}
-											error={analyticsError as Error | null}
-											isLoading={analyticsLoading}
-											onRetry={refetchAnalytics}
-											referrerAnalytics={referrerData?.referrer_analytics}
-											selectedReferrer={selectedReferrer}
-										/>
-									</div>
-								);
-							}}
-						</FunnelsList>
-					)}
+											<FunnelAnalytics
+												data={analyticsData}
+												error={analyticsError as Error | null}
+												isLoading={analyticsLoading}
+												onRetry={refetchAnalytics}
+												referrerAnalytics={referrerData?.referrer_analytics}
+												selectedReferrer={selectedReferrer}
+											/>
+										</div>
+									);
+								}}
+							</FunnelsList>
+						)}
+					</DataList.Content>
 				</div>
 
 				{editing !== null && (

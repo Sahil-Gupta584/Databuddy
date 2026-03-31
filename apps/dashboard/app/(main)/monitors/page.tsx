@@ -9,38 +9,38 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { PageHeader } from "@/app/(main)/websites/_components/page-header";
-import { EmptyState } from "@/components/empty-state";
+import { DataList } from "@/components/data-list";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FeatureAccessGate } from "@/components/feature-access-gate";
+import { MonitorRow } from "@/components/monitors/monitor-row";
 import { MonitorSheet } from "@/components/monitors/monitor-sheet";
 import { FeatureInviteDialog } from "@/components/organizations/feature-invite-dialog";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureAccess } from "@/hooks/use-feature-access";
+import type { ListQuerySlice } from "@/lib/list-query-outcome";
 import { orpc } from "@/lib/orpc";
 import { cn } from "@/lib/utils";
-import { type Monitor, MonitorsList } from "./_components/monitors-list";
 
-const MonitorsListSkeleton = () => (
-	<div className="w-full overflow-x-auto">
-		{Array.from({ length: 5 }).map((_, i) => (
-			<div
-				className="flex h-15 items-center gap-4 border-b px-4"
-				key={`skeleton-${i + 1}`}
-			>
-				<Skeleton className="size-8 shrink-0 rounded" />
-				<Skeleton className="h-4 w-40 shrink-0 lg:w-52" />
-				<Skeleton className="h-3 min-w-0 flex-1" />
-				<Skeleton className="hidden h-3 w-14 shrink-0 md:block" />
-				<Skeleton className="hidden h-5 w-16 shrink-0 md:block" />
-				<Skeleton className="hidden h-5 w-32 shrink-0 lg:block lg:w-44" />
-				<Skeleton className="hidden h-4 w-14 shrink-0 lg:block" />
-				<Skeleton className="h-5 w-16 shrink-0" />
-				<Skeleton className="size-8 shrink-0 rounded" />
-			</div>
-		))}
-	</div>
-);
+export interface Monitor {
+	id: string;
+	websiteId: string | null;
+	url: string | null;
+	name: string | null;
+	granularity: string;
+	cron: string;
+	isPaused: boolean;
+	isPublic: boolean;
+	createdAt: Date | string;
+	updatedAt: Date | string;
+	website: {
+		id: string;
+		name: string | null;
+		domain: string;
+	} | null;
+	jsonParsingConfig?: {
+		enabled: boolean;
+	} | null;
+}
 
 export default function MonitorsPage() {
 	const { hasAccess, isLoading: isAccessLoading } =
@@ -58,13 +58,7 @@ export default function MonitorsPage() {
 		} | null;
 	} | null>(null);
 
-	const {
-		data: schedules,
-		isLoading,
-		refetch,
-		isFetching,
-		isError,
-	} = useQuery({
+	const schedulesQuery = useQuery({
 		...orpc.uptime.listSchedules.queryOptions({ input: {} }),
 		enabled: hasAccess,
 	});
@@ -87,7 +81,7 @@ export default function MonitorsPage() {
 	};
 
 	const handleDelete = () => {
-		refetch();
+		schedulesQuery.refetch();
 	};
 
 	const handleSheetClose = () => {
@@ -99,7 +93,7 @@ export default function MonitorsPage() {
 		<ErrorBoundary>
 			<div className="h-full overflow-y-auto">
 				<PageHeader
-					count={hasAccess ? schedules?.length : undefined}
+					count={hasAccess ? schedulesQuery.data?.length : undefined}
 					description="View and manage all your uptime monitors"
 					icon={<HeartbeatIcon />}
 					right={
@@ -114,13 +108,18 @@ export default function MonitorsPage() {
 								</Button>
 								<Button
 									aria-label="Refresh monitors"
-									disabled={isLoading || isFetching}
-									onClick={() => refetch()}
+									disabled={
+										schedulesQuery.isLoading || schedulesQuery.isFetching
+									}
+									onClick={() => schedulesQuery.refetch()}
 									size="icon"
 									variant="outline"
 								>
 									<ArrowClockwiseIcon
-										className={cn((isLoading || isFetching) && "animate-spin")}
+										className={cn(
+											(schedulesQuery.isLoading || schedulesQuery.isFetching) &&
+												"animate-spin"
+										)}
 									/>
 								</Button>
 								<Button onClick={handleCreate}>
@@ -135,35 +134,52 @@ export default function MonitorsPage() {
 
 				<FeatureAccessGate
 					flagKey="monitors"
-					loadingFallback={<MonitorsListSkeleton />}
+					loadingFallback={<DataList.DefaultLoading />}
 				>
-					{isError ? (
-						<div className="flex h-full items-center justify-center py-16">
-							<EmptyState
-								action={{ label: "Retry", onClick: () => refetch() }}
-								description="Something went wrong while fetching monitors."
-								icon={<HeartbeatIcon />}
-								title="Failed to load monitors"
-								variant="minimal"
-							/>
-						</div>
-					) : (
-						<MonitorsList
-							isLoading={isAccessLoading || isLoading}
-							monitors={(schedules as unknown as Monitor[]) || []}
-							onCreateMonitorAction={handleCreate}
-							onDeleteMonitorAction={handleDelete}
-							onEditMonitorAction={handleEdit}
-							onRefetchAction={refetch}
-						/>
-					)}
+					<DataList.Content<Monitor>
+						emptyProps={{
+							action: {
+								label: "Create Your First Monitor",
+								onClick: handleCreate,
+							},
+							description:
+								"Create your first uptime monitor to start tracking availability and receive alerts when services go down.",
+							icon: <HeartbeatIcon weight="duotone" />,
+							title: "No monitors yet",
+						}}
+						errorProps={{
+							action: {
+								label: "Retry",
+								onClick: () => schedulesQuery.refetch(),
+							},
+							description: "Something went wrong while fetching monitors.",
+							icon: <HeartbeatIcon />,
+							title: "Failed to load monitors",
+						}}
+						gatePending={isAccessLoading}
+						query={schedulesQuery as ListQuerySlice<Monitor>}
+					>
+						{(items) => (
+							<DataList className="rounded bg-card">
+								{items.map((monitor) => (
+									<MonitorRow
+										key={monitor.id}
+										onDeleteAction={handleDelete}
+										onEditAction={() => handleEdit(monitor)}
+										onRefetchAction={schedulesQuery.refetch}
+										schedule={monitor}
+									/>
+								))}
+							</DataList>
+						)}
+					</DataList.Content>
 				</FeatureAccessGate>
 
 				{isSheetOpen && (
 					<Suspense fallback={null}>
 						<MonitorSheet
 							onCloseAction={handleSheetClose}
-							onSaveAction={refetch}
+							onSaveAction={schedulesQuery.refetch}
 							open={isSheetOpen}
 							schedule={editingSchedule}
 						/>

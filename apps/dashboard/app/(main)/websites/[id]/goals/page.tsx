@@ -6,6 +6,7 @@ import { TrendDownIcon } from "@phosphor-icons/react/dist/ssr/TrendDown";
 import { useAtomValue } from "jotai";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { DataList } from "@/components/data-list";
 import { FeatureGate } from "@/components/feature-gate";
 import { Card, CardContent } from "@/components/ui/card";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
@@ -25,11 +26,11 @@ import { GoalsList } from "./_components/goals-list";
 
 function GoalsListSkeleton() {
 	return (
-		<div>
+		<DataList className="rounded bg-card">
 			{[1, 2, 3].map((i) => (
 				<GoalItemSkeleton key={i} />
 			))}
-		</div>
+		</DataList>
 	);
 }
 

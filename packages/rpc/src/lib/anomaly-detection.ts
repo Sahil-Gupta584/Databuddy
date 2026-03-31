@@ -1,5 +1,7 @@
 import { chQuery, TABLE_NAMES } from "@databuddy/db";
 
+/** ClickHouse `formatDateTime`: use `%i` for minutes. Since v23.4, `%M` is the full month name (MySQL-style). */
+
 export type AnomalyType = "spike" | "drop";
 export type AnomalyMetric = "pageviews" | "custom_events" | "errors";
 export type AnomalySeverity = "warning" | "critical";
@@ -162,8 +164,8 @@ async function fetchRecentHours(
 		SELECT
 			count() AS event_count,
 			toHour(toStartOfHour(${timeCol})) AS hour_of_day,
-			formatDateTime(toStartOfHour(${timeCol}), '%Y-%m-%d %H:%M:%S') AS period_start,
-			formatDateTime(toStartOfHour(${timeCol}) + INTERVAL 1 HOUR, '%Y-%m-%d %H:%M:%S') AS period_end
+			formatDateTime(toStartOfHour(${timeCol}), '%Y-%m-%d %H:%i:%S') AS period_start,
+			formatDateTime(toStartOfHour(${timeCol}) + INTERVAL 1 HOUR, '%Y-%m-%d %H:%i:%S') AS period_end
 		FROM ${table}
 		WHERE client_id = {clientId: String}
 			AND ${timeCol} >= toStartOfHour(now() - INTERVAL 3 HOUR)
@@ -294,8 +296,8 @@ async function fetchCustomEventAnomalies(
 				event_name,
 				count() AS event_count,
 				toHour(toStartOfHour(timestamp)) AS hour_of_day,
-				formatDateTime(toStartOfHour(timestamp), '%Y-%m-%d %H:%M:%S') AS period_start,
-				formatDateTime(toStartOfHour(timestamp) + INTERVAL 1 HOUR, '%Y-%m-%d %H:%M:%S') AS period_end
+				formatDateTime(toStartOfHour(timestamp), '%Y-%m-%d %H:%i:%S') AS period_start,
+				formatDateTime(toStartOfHour(timestamp) + INTERVAL 1 HOUR, '%Y-%m-%d %H:%i:%S') AS period_end
 			FROM ${TABLE_NAMES.custom_events}
 			WHERE owner_id = {clientId: String}
 				AND timestamp >= toStartOfHour(now() - INTERVAL 3 HOUR)

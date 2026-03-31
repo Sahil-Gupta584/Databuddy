@@ -1,7 +1,6 @@
 "use client";
 
-import { FunnelIcon } from "@phosphor-icons/react/dist/ssr/Funnel";
-import { EmptyState } from "@/components/empty-state";
+import { DataList } from "@/components/data-list";
 import type { FunnelAnalyticsData } from "@/types/funnels";
 import { FunnelItem, type FunnelItemData } from "./funnel-item";
 
@@ -13,7 +12,6 @@ interface FunnelsListProps {
 	onToggleFunnel: (funnelId: string) => void;
 	onEditFunnel: (funnel: FunnelItemData) => void;
 	onDeleteFunnel: (funnelId: string) => void;
-	onCreateFunnel: () => void;
 	children?: (funnel: FunnelItemData) => React.ReactNode;
 }
 
@@ -25,33 +23,16 @@ export function FunnelsList({
 	onToggleFunnel,
 	onEditFunnel,
 	onDeleteFunnel,
-	onCreateFunnel,
 	children,
 }: FunnelsListProps) {
-	if (funnels.length === 0) {
-		return (
-			<div className="flex flex-1 items-center justify-center py-16">
-				<EmptyState
-					action={{
-						label: "Create Your First Funnel",
-						onClick: onCreateFunnel,
-					}}
-					description="Create your first funnel to start tracking user conversion journeys and identify optimization opportunities in your user flow."
-					icon={<FunnelIcon weight="duotone" />}
-					title="No funnels yet"
-					variant="minimal"
-				/>
-			</div>
-		);
-	}
-
 	return (
-		<div>
-			{funnels.map((funnel) => (
+		<DataList className="rounded bg-card">
+			{funnels.map((funnel, index) => (
 				<FunnelItem
 					analytics={analyticsMap?.get(funnel.id)}
 					funnel={funnel}
 					isExpanded={expandedFunnelId === funnel.id}
+					isLast={index === funnels.length - 1}
 					isLoadingAnalytics={loadingAnalyticsIds?.has(funnel.id)}
 					key={funnel.id}
 					onDelete={onDeleteFunnel}
@@ -61,6 +42,6 @@ export function FunnelsList({
 					{children?.(funnel)}
 				</FunnelItem>
 			))}
-		</div>
+		</DataList>
 	);
 }

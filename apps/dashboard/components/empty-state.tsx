@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 export interface EmptyStateAction {
 	label: string;
 	onClick: () => void;
-	variant?: "default" | "outline" | "secondary";
+	variant?: "default" | "destructive" | "ghost" | "outline";
 	size?: "default" | "sm" | "lg" | "icon";
 }
 

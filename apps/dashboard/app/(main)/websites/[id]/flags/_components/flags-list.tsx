@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { DataList } from "@/components/data-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -295,112 +296,112 @@ function FlagRow({
 	const dependencies = flag.dependencies ?? [];
 
 	return (
-		<button
-			className={cn(
-				"group flex h-15 min-w-full cursor-pointer items-center gap-4 border-b px-4 text-left transition-colors hover:bg-accent/50",
-				{ "opacity-50": flag.status === "archived" }
-			)}
-			onClick={() => onEdit(flag)}
-			type="button"
+		<DataList.Row
+			align="center"
+			asChild
+			className={cn("min-w-full", flag.status === "archived" && "opacity-50")}
 		>
-			{/* Flag name & key */}
-			<div
-				className="flex min-w-[280px] shrink-0 items-center gap-3"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-				role="presentation"
+			<button
+				className="cursor-pointer text-left"
+				onClick={() => onEdit(flag)}
+				type="button"
 			>
-				<div
-					className={cn("shrink-0 rounded bg-accent p-1.5", typeConfig.color)}
+				{/* Flag name & key */}
+				<DataList.Cell
+					className="min-w-0 max-w-[min(320px,100%)] shrink-0"
+					onClick={(e) => e.stopPropagation()}
+					onKeyDown={(e) => e.stopPropagation()}
 				>
-					<TypeIconComponent className="size-4" weight="duotone" />
-				</div>
-				<div className="flex flex-col items-start gap-0.5">
-					<div className="flex items-center gap-2">
-						<p className="truncate font-medium text-foreground text-sm">
-							{flag.name ?? flag.key}
+					<div className="flex min-w-0 items-center gap-3">
+						<div
+							className={cn(
+								"shrink-0 rounded bg-accent p-1.5",
+								typeConfig.color
+							)}
+						>
+							<TypeIconComponent className="size-4" weight="duotone" />
+						</div>
+						<div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+							<div className="flex min-w-0 flex-wrap items-center gap-2">
+								<p className="wrap-break-word text-pretty text-start font-medium text-foreground text-sm">
+									{flag.name ?? flag.key}
+								</p>
+								<DependencyBadges
+									dependencies={dependencies}
+									dependents={dependents}
+									flagMap={flagMap}
+								/>
+							</div>
+							<FlagKey className="-ms-1.5 max-w-full" flag={flag} />
+						</div>
+					</div>
+				</DataList.Cell>
+
+				{/* Description */}
+				<DataList.Cell grow>
+					{flag.description ? (
+						<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
+							{flag.description}
 						</p>
-						<DependencyBadges
-							dependencies={dependencies}
-							dependents={dependents}
-							flagMap={flagMap}
-						/>
-					</div>
-					<FlagKey className="-ms-1.5" flag={flag} />
-				</div>
-			</div>
+					) : null}
+				</DataList.Cell>
 
-			{/* Description */}
-			<div className="min-w-[300px] flex-1">
-				{flag.description && (
-					<p className="line-clamp-2 text-muted-foreground text-xs">
-						{flag.description}
-					</p>
-				)}
-			</div>
-
-			{/* Type */}
-			<div className="w-[100px] shrink-0">
-				<Badge className="font-normal" variant="secondary">
-					{typeConfig.label}
-				</Badge>
-			</div>
-
-			{/* Rollout */}
-			<div className="w-20 shrink-0 text-center">
-				{flag.type === "rollout" && rollout > 0 && (
-					<RolloutProgress percentage={rollout} />
-				)}
-			</div>
-
-			{/* Rules & Variants */}
-			<div className="w-[100px] shrink-0">
-				{(ruleCount > 0 || variantCount > 0) && (
-					<div className="flex flex-col gap-0.5 text-muted-foreground text-xs">
-						{ruleCount > 0 && (
-							<span>
-								{ruleCount} {ruleCount === 1 ? "rule" : "rules"}
-							</span>
-						)}
-						{variantCount > 0 && (
-							<FlagVariants variants={flag.variants ?? []} />
-						)}
-					</div>
-				)}
-			</div>
-
-			{/* Groups */}
-			<div className="w-[100px] shrink-0">
-				<GroupsDisplay groups={groups} />
-			</div>
-
-			{/* Status */}
-			<div
-				className="w-[120px] shrink-0"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-				role="presentation"
-			>
-				{flag.status === "archived" ? (
-					<Badge className="gap-1" variant="amber">
-						<ArchiveIcon className="size-3" weight="duotone" />
-						Archived
+				{/* Type */}
+				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+					<Badge className="font-normal" variant="secondary">
+						{typeConfig.label}
 					</Badge>
-				) : (
-					<StatusToggle flag={flag} />
-				)}
-			</div>
+				</DataList.Cell>
 
-			{/* Actions */}
-			<div
-				className="w-[60px] shrink-0"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-				role="presentation"
-			>
-				<FlagActions flag={flag} onDelete={onDelete} onEdit={onEdit} />
-			</div>
-		</button>
+				{/* Rollout */}
+				<DataList.Cell className="flex w-20 shrink-0 justify-center">
+					{flag.type === "rollout" && rollout > 0 && (
+						<RolloutProgress percentage={rollout} />
+					)}
+				</DataList.Cell>
+
+				{/* Rules & Variants */}
+				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+					{(ruleCount > 0 || variantCount > 0) && (
+						<div className="flex flex-col gap-0.5 text-center text-muted-foreground text-xs">
+							{ruleCount > 0 && (
+								<span>
+									{ruleCount} {ruleCount === 1 ? "rule" : "rules"}
+								</span>
+							)}
+							{variantCount > 0 && (
+								<FlagVariants variants={flag.variants ?? []} />
+							)}
+						</div>
+					)}
+				</DataList.Cell>
+
+				{/* Groups */}
+				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+					<GroupsDisplay groups={groups} />
+				</DataList.Cell>
+
+				{/* Status */}
+				<DataList.Cell
+					className="flex w-[120px] shrink-0 justify-center"
+					onClick={(e) => e.stopPropagation()}
+					onKeyDown={(e) => e.stopPropagation()}
+				>
+					{flag.status === "archived" ? (
+						<Badge className="gap-1" variant="amber">
+							<ArchiveIcon className="size-3" weight="duotone" />
+							Archived
+						</Badge>
+					) : (
+						<StatusToggle flag={flag} />
+					)}
+				</DataList.Cell>
+
+				<DataList.Cell action>
+					<FlagActions flag={flag} onDelete={onDelete} onEdit={onEdit} />
+				</DataList.Cell>
+			</button>
+		</DataList.Row>
 	);
 }
 
@@ -428,7 +429,7 @@ export function FlagsList({ flags, groups, onEdit, onDelete }: FlagsListProps) {
 	}, [flags]);
 
 	return (
-		<div className="w-full overflow-x-auto">
+		<DataList className="rounded bg-card">
 			{flags.map((flag) => (
 				<FlagRow
 					dependents={dependentsMap.get(flag.key) ?? []}
@@ -440,46 +441,48 @@ export function FlagsList({ flags, groups, onEdit, onDelete }: FlagsListProps) {
 					onEdit={onEdit}
 				/>
 			))}
-		</div>
+		</DataList>
 	);
 }
 
 export function FlagsListSkeleton() {
 	return (
-		<div className="w-full overflow-x-auto">
+		<DataList className="rounded bg-card">
 			{Array.from({ length: 5 }).map((_, i) => (
 				<div
-					className="flex h-15 items-center gap-4 border-b px-4"
+					className="flex min-h-15 items-center gap-4 border-border/80 border-b px-4 py-3 last:border-b-0"
 					key={`skeleton-${i + 1}`}
 				>
-					<div className="flex min-w-[280px] shrink-0 items-center gap-3">
-						<Skeleton className="size-7 rounded" />
-						<Skeleton className="h-4 w-28" />
-						<Skeleton className="h-5 w-20" />
+					<div className="flex min-w-0 max-w-[min(320px,100%)] shrink-0 items-center gap-3">
+						<Skeleton className="size-7 shrink-0 rounded" />
+						<div className="min-w-0 flex-1 space-y-1.5">
+							<Skeleton className="h-4 w-28 max-w-full" />
+							<Skeleton className="h-3 w-36 max-w-full" />
+						</div>
 					</div>
-					<div className="min-w-[300px] flex-1">
-						<Skeleton className="h-3 w-48" />
+					<div className="min-w-0 flex-1">
+						<Skeleton className="h-3 w-full max-w-md" />
 					</div>
-					<div className="w-[100px] shrink-0">
+					<div className="flex w-[100px] shrink-0 justify-center">
 						<Skeleton className="h-5 w-16" />
 					</div>
-					<div className="w-[100px] shrink-0">
-						<Skeleton className="h-9 w-9 rounded-full" />
+					<div className="flex w-20 shrink-0 justify-center">
+						<Skeleton className="h-4 w-10" />
 					</div>
-					<div className="w-[100px] shrink-0">
+					<div className="flex w-[100px] shrink-0 justify-center">
 						<Skeleton className="h-3 w-12" />
 					</div>
-					<div className="w-[100px] shrink-0">
+					<div className="flex w-[100px] shrink-0 justify-center">
 						<Skeleton className="h-4 w-12" />
 					</div>
-					<div className="w-[120px] shrink-0">
+					<div className="flex w-[120px] shrink-0 justify-center">
 						<Skeleton className="h-5 w-14" />
 					</div>
-					<div className="w-[60px] shrink-0">
+					<div className="flex w-[60px] shrink-0 justify-end">
 						<Skeleton className="size-8 rounded" />
 					</div>
 				</div>
 			))}
-		</div>
+		</DataList>
 	);
 }

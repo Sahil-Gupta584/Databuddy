@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { toast } from "sonner";
+import { listQueryOutcome } from "@/lib/list-query-outcome";
 import { orpc } from "@/lib/orpc";
 import type {
 	CreateFunnelData,
@@ -75,6 +76,17 @@ export function useFunnels(
 		return set;
 	}, [analyticsResults, funnels]);
 
+	const listOutcome = useMemo(
+		() =>
+			listQueryOutcome({
+				data: funnels,
+				isError: query.isError,
+				isPending: query.isPending,
+				isSuccess: query.isSuccess,
+			}),
+		[funnels, query.isError, query.isPending, query.isSuccess]
+	);
+
 	const invalidateAll = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
@@ -124,6 +136,7 @@ export function useFunnels(
 		funnels,
 		analyticsMap,
 		loadingIds,
+		listOutcome,
 		isLoading: query.isLoading,
 		isFetching: query.isFetching || analyticsResults.some((r) => r.isFetching),
 		error: query.error,

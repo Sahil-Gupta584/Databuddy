@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FaviconImage } from "@/components/analytics/favicon-image";
+import { DataList } from "@/components/data-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,11 +27,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBatchDynamicQuery } from "@/hooks/use-dynamic-query";
 import dayjs from "@/lib/dayjs";
-import { formatDateOnly } from "@/lib/time";
 import { orpc } from "@/lib/orpc";
-import { cn } from "@/lib/utils";
+import { formatDateOnly } from "@/lib/time";
 import { buildUptimeHeatmapDays } from "@/lib/uptime/heatmap-days";
 import { UptimeHeatmapStrip } from "@/lib/uptime/heatmap-strip";
+import { cn } from "@/lib/utils";
 
 const GRANULARITY_LABELS: Record<string, string> = {
 	minute: "1 min",
@@ -183,12 +184,12 @@ function MiniHeatmap({
 			end_date: dayjs().startOf("day").format("YYYY-MM-DD"),
 			granularity: "daily" as const,
 		}),
-		[],
+		[]
 	);
 
 	const queryIdOptions = useMemo(
 		() => (websiteId ? { websiteId } : { scheduleId }),
-		[websiteId, scheduleId],
+		[websiteId, scheduleId]
 	);
 
 	const heatmapQueries = useMemo(
@@ -199,14 +200,14 @@ function MiniHeatmap({
 				granularity: "daily" as const,
 			},
 		],
-		[],
+		[]
 	);
 
 	const { getDataForQuery, isLoading } = useBatchDynamicQuery(
 		queryIdOptions,
 		heatmapDateRange,
 		heatmapQueries,
-		{ enabled: isActive },
+		{ enabled: isActive }
 	);
 
 	const rawData =
@@ -217,7 +218,7 @@ function MiniHeatmap({
 
 	const heatmapData = useMemo(
 		() => buildUptimeHeatmapDays(rawData, HEATMAP_DAYS),
-		[rawData],
+		[rawData]
 	);
 
 	const uptimePercent = useMemo(() => {
@@ -275,7 +276,7 @@ function MiniHeatmap({
 							? "text-emerald-600 dark:text-emerald-400"
 							: uptimePercent >= 95
 								? "text-amber-600 dark:text-amber-400"
-								: "text-red-600 dark:text-red-400",
+								: "text-red-600 dark:text-red-400"
 				)}
 			>
 				{uptimePercent === null ? "—" : `${uptimePercent.toFixed(1)}%`}
@@ -308,98 +309,80 @@ export function MonitorRow({
 	};
 
 	return (
-		<Link
-			className={cn(
-				"group flex h-15 min-w-full items-center gap-4 border-b px-4 transition-colors hover:bg-accent/50",
-				!isActive && "opacity-50",
-			)}
-			href={`/monitors/${schedule.id}`}
-			onClick={handleClick}
-		>
-			{/* Icon */}
-			<div
-				className={cn(
-					"flex size-8 shrink-0 items-center justify-center rounded",
-					isActive
-						? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-						: "bg-muted text-muted-foreground",
-				)}
-			>
-				{displayUrl ? (
-					<FaviconImage
-						altText={`${displayName} favicon`}
-						domain={displayUrl}
-						fallbackIcon={
+		<DataList.Row asChild className={cn(!isActive && "opacity-50")}>
+			<Link href={`/monitors/${schedule.id}`} onClick={handleClick}>
+				<DataList.Cell className="pt-0.5">
+					<div
+						className={cn(
+							"flex size-8 items-center justify-center rounded",
+							isActive
+								? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+								: "bg-muted text-muted-foreground"
+						)}
+					>
+						{displayUrl ? (
+							<FaviconImage
+								altText={`${displayName} favicon`}
+								domain={displayUrl}
+								fallbackIcon={
+									<HeartbeatIcon className="size-4" weight="duotone" />
+								}
+								size={16}
+							/>
+						) : (
 							<HeartbeatIcon className="size-4" weight="duotone" />
-						}
-						size={16}
+						)}
+					</div>
+				</DataList.Cell>
+
+				<DataList.Cell className="w-40 min-w-0 lg:w-52">
+					<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
+						{displayName}
+					</p>
+				</DataList.Cell>
+
+				<DataList.Cell grow>
+					<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
+						{displayUrl}
+					</p>
+				</DataList.Cell>
+
+				<DataList.Cell className="hidden w-14 pt-0.5 text-muted-foreground text-xs tabular-nums md:block">
+					{GRANULARITY_LABELS[schedule.granularity] || schedule.granularity}
+				</DataList.Cell>
+
+				<DataList.Cell className="hidden w-16 pt-0.5 md:block">
+					{schedule.isPublic ? (
+						<Badge className="gap-1" variant="outline">
+							<GlobeIcon className="size-3" weight="duotone" />
+							Public
+						</Badge>
+					) : null}
+				</DataList.Cell>
+
+				<DataList.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
+					<MiniHeatmap
+						isActive={isActive}
+						scheduleId={schedule.id}
+						websiteId={schedule.websiteId}
 					/>
-				) : (
-					<HeartbeatIcon className="size-4" weight="duotone" />
-				)}
-			</div>
+				</DataList.Cell>
 
-			{/* Name */}
-			<p className="w-40 shrink-0 truncate font-medium text-foreground text-sm lg:w-52">
-				{displayName}
-			</p>
-
-			{/* URL */}
-			<p className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
-				{displayUrl}
-			</p>
-
-			{/* Frequency */}
-			<span className="hidden w-14 shrink-0 text-muted-foreground text-xs tabular-nums md:block">
-				{GRANULARITY_LABELS[schedule.granularity] || schedule.granularity}
-			</span>
-
-			{/* Public */}
-			<div className="hidden w-16 shrink-0 md:block">
-				{schedule.isPublic ? (
-					<Badge className="gap-1" variant="outline">
-						<GlobeIcon className="size-3" weight="duotone" />
-						Public
+				<DataList.Cell className="w-16 pt-0.5">
+					<Badge className="shrink-0" variant={isActive ? "green" : "amber"}>
+						{isActive ? "Active" : "Paused"}
 					</Badge>
-				) : null}
-			</div>
+				</DataList.Cell>
 
-			{/* Heatmap + uptime % */}
-			<div className="hidden shrink-0 items-center gap-3 lg:flex">
-				<MiniHeatmap
-					isActive={isActive}
-					scheduleId={schedule.id}
-					websiteId={schedule.websiteId}
-				/>
-			</div>
-
-			{/* Status */}
-			<div className="w-16 shrink-0">
-				<Badge
-					className="shrink-0"
-					variant={isActive ? "green" : "amber"}
-				>
-					{isActive ? "Active" : "Paused"}
-				</Badge>
-			</div>
-
-			{/* Actions */}
-			<div
-				className="shrink-0"
-				onClick={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-				}}
-				onKeyDown={(e) => e.stopPropagation()}
-				role="presentation"
-			>
-				<MonitorActions
-					onDeleteAction={onDeleteAction}
-					onEditAction={onEditAction}
-					onRefetchAction={onRefetchAction}
-					schedule={schedule}
-				/>
-			</div>
-		</Link>
+				<DataList.Cell action className="pt-0.5">
+					<MonitorActions
+						onDeleteAction={onDeleteAction}
+						onEditAction={onEditAction}
+						onRefetchAction={onRefetchAction}
+						schedule={schedule}
+					/>
+				</DataList.Cell>
+			</Link>
+		</DataList.Row>
 	);
 }

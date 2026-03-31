@@ -7,7 +7,7 @@ import {
 	PencilSimpleIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { Badge } from "@/components/ui/badge";
+import { DataList } from "@/components/data-list";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -30,7 +30,6 @@ interface GoalItemProps {
 	isLoadingAnalytics?: boolean;
 	onEdit: (goal: Goal) => void;
 	onDelete: (goalId: string) => void;
-	className?: string;
 }
 
 function formatNumber(num: number): string {
@@ -43,38 +42,32 @@ function formatNumber(num: number): string {
 	return num.toLocaleString();
 }
 
-function GoalTypeIcon({ type }: { type: string }) {
-	if (type === "EVENT") {
-		return (
-			<MouseMiddleClickIcon
-				className="size-4 text-muted-foreground"
-				weight="duotone"
-			/>
-		);
-	}
-	return <EyeIcon className="size-4 text-muted-foreground" weight="duotone" />;
-}
+const GOAL_TYPE_CONFIG = {
+	PAGE_VIEW: {
+		icon: EyeIcon,
+		bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+	},
+	EVENT: {
+		icon: MouseMiddleClickIcon,
+		bg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+	},
+} as const;
 
-function MiniProgressLines({ conversionRate }: { conversionRate: number }) {
-	const lineCount = 24;
-	const percentage = Math.max(0, Math.min(100, conversionRate)) / 100;
-	const activeLines = Math.floor(percentage * lineCount);
+function MiniGoalChart({ rate }: { rate: number }) {
+	const percentage = Math.max(0, Math.min(100, rate)) / 100;
+	const activeLines = Math.floor(percentage * 24);
 
 	return (
-		<div className="flex h-7 w-32 items-center gap-[3px]">
-			{Array.from({ length: lineCount }).map((_, index) => {
-				const isActive = index < activeLines;
-				return (
-					<div
-						className="h-full w-[2px] rounded-sm transition-all"
-						key={`line-${index}`}
-						style={{
-							backgroundColor: isActive ? "var(--primary)" : "var(--muted)",
-							transform: isActive ? "scaleY(1)" : "scaleY(0.6)",
-						}}
-					/>
-				);
-			})}
+		<div className="flex h-5 w-32 items-end gap-[1.5px] lg:w-44">
+			{Array.from({ length: 24 }).map((_, i) => (
+				<div
+					className={cn(
+						"h-full w-[2px] rounded-sm",
+						i < activeLines ? "bg-chart-1" : "scale-y-[0.6] bg-muted"
+					)}
+					key={`bar-${i + 1}`}
+				/>
+			))}
 		</div>
 	);
 }
@@ -85,142 +78,130 @@ export function GoalItem({
 	isLoadingAnalytics,
 	onEdit,
 	onDelete,
-	className,
 }: GoalItemProps) {
-	const conversionRate = analytics?.overall_conversion_rate ?? 0;
-	const totalUsers = analytics?.total_users_completed ?? 0;
+	const rate = analytics?.overall_conversion_rate ?? 0;
+	const users = analytics?.total_users_completed ?? 0;
+	const config =
+		GOAL_TYPE_CONFIG[goal.type as keyof typeof GOAL_TYPE_CONFIG] ??
+		GOAL_TYPE_CONFIG.PAGE_VIEW;
+	const TypeIcon = config.icon;
 
 	return (
-		<div className={cn("border-border border-b", className)}>
-			{/* Main row */}
-			<div className="group flex items-center hover:bg-accent/50">
-				<div className="flex flex-1 items-center gap-4 px-4 py-3 sm:px-6 sm:py-4">
-					{/* Type icon */}
-					<GoalTypeIcon type={goal.type} />
-
-					{/* Name & target */}
-					<div className="min-w-0 flex-1">
-						<div className="flex items-center gap-2">
-							<h3 className="truncate font-medium text-foreground">
-								{goal.name}
-							</h3>
-							<Badge className="shrink-0" variant="gray">
-								{goal.type === "PAGE_VIEW" ? "Page" : "Event"}
-							</Badge>
-							{!goal.isActive && (
-								<Badge className="shrink-0" variant="secondary">
-									Paused
-								</Badge>
-							)}
-						</div>
-						<p className="mt-0.5 truncate text-muted-foreground text-sm">
-							{goal.target}
-						</p>
-					</div>
-
-					{/* Stats - Desktop */}
-					<div className="hidden items-center gap-6 lg:flex">
-						{isLoadingAnalytics ? (
-							<>
-								<Skeleton className="h-6 w-20" />
-								<Skeleton className="h-6 w-16" />
-								<Skeleton className="h-6 w-16" />
-							</>
-						) : (
-							<>
-								{/* Mini line visualization */}
-								<MiniProgressLines conversionRate={conversionRate} />
-
-								{/* Users count */}
-								<div className="w-16 text-right">
-									<div className="font-semibold tabular-nums">
-										{formatNumber(totalUsers)}
-									</div>
-									<div className="text-muted-foreground text-xs">users</div>
-								</div>
-
-								{/* Conversion rate */}
-								<div className="w-16 text-right">
-									<div className="font-semibold text-primary tabular-nums">
-										{conversionRate.toFixed(1)}%
-									</div>
-									<div className="text-muted-foreground text-xs">
-										conversion
-									</div>
-								</div>
-							</>
-						)}
-					</div>
-
-					{/* Stats - Mobile */}
-					<div className="flex items-center gap-3 lg:hidden">
-						{isLoadingAnalytics ? (
-							<Skeleton className="h-5 w-12" />
-						) : (
-							<span className="font-semibold text-primary tabular-nums">
-								{conversionRate.toFixed(1)}%
-							</span>
-						)}
-					</div>
-
-					{/* Actions */}
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								aria-label="Goal actions"
-								className="size-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-								size="icon"
-								variant="ghost"
-							>
-								<DotsThreeIcon className="size-5" weight="bold" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-40">
-							<DropdownMenuItem onClick={() => onEdit(goal)}>
-								<PencilSimpleIcon className="size-4" weight="duotone" />
-								Edit
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								className="text-destructive focus:text-destructive"
-								onClick={() => onDelete(goal.id)}
-							>
-								<TrashIcon className="size-4" weight="duotone" />
-								Delete
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
+		<DataList.Row className={cn(!goal.isActive && "opacity-50")}>
+			<DataList.Cell className="pt-0.5">
+				<div
+					className={cn(
+						"flex size-8 items-center justify-center rounded",
+						config.bg
+					)}
+				>
+					<TypeIcon className="size-4" weight="duotone" />
 				</div>
-			</div>
-		</div>
+			</DataList.Cell>
+
+			<DataList.Cell className="w-40 min-w-0 lg:w-52">
+				<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
+					{goal.name}
+				</p>
+			</DataList.Cell>
+
+			<DataList.Cell grow>
+				<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
+					{goal.target}
+				</p>
+			</DataList.Cell>
+
+			<DataList.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
+				{isLoadingAnalytics ? (
+					<>
+						<Skeleton className="h-5 w-32 rounded lg:w-44" />
+						<div className="flex flex-col items-end gap-0.5">
+							<Skeleton className="h-4 w-10 rounded" />
+							<Skeleton className="h-3 w-8 rounded" />
+						</div>
+						<div className="flex flex-col items-end gap-0.5">
+							<Skeleton className="h-4 w-10 rounded" />
+							<Skeleton className="h-3 w-8 rounded" />
+						</div>
+					</>
+				) : (
+					<>
+						<MiniGoalChart rate={rate} />
+						<div className="flex w-16 flex-col items-end">
+							<span className="font-semibold text-sm tabular-nums">
+								{formatNumber(users)}
+							</span>
+							<span className="text-muted-foreground text-xs">Users</span>
+						</div>
+						<div className="flex w-16 flex-col items-end">
+							<span className="font-semibold text-sm text-success tabular-nums">
+								{rate.toFixed(1)}%
+							</span>
+							<span className="text-muted-foreground text-xs">Conversion</span>
+						</div>
+					</>
+				)}
+			</DataList.Cell>
+
+			<DataList.Cell className="w-14 pt-0.5 text-right lg:hidden">
+				{isLoadingAnalytics ? (
+					<Skeleton className="ms-auto h-4 w-12 rounded" />
+				) : (
+					<span className="font-semibold text-sm tabular-nums">
+						{rate.toFixed(1)}%
+					</span>
+				)}
+			</DataList.Cell>
+
+			<DataList.Cell action className="pt-0.5">
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							aria-label="Goal actions"
+							className="size-8 opacity-50 hover:opacity-100 data-[state=open]:opacity-100"
+							data-dropdown-trigger
+							size="icon"
+							variant="ghost"
+						>
+							<DotsThreeIcon className="size-5" weight="bold" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-40">
+						<DropdownMenuItem className="gap-2" onClick={() => onEdit(goal)}>
+							<PencilSimpleIcon className="size-4" weight="duotone" />
+							Edit
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							className="gap-2 text-destructive focus:text-destructive"
+							onClick={() => onDelete(goal.id)}
+							variant="destructive"
+						>
+							<TrashIcon className="size-4 fill-destructive" weight="duotone" />
+							Delete
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</DataList.Cell>
+		</DataList.Row>
 	);
 }
 
 export function GoalItemSkeleton() {
 	return (
-		<div className="flex items-center border-border border-b px-4 py-3 sm:px-6 sm:py-4">
-			<div className="flex flex-1 items-center gap-4">
-				<Skeleton className="size-4 shrink-0" />
-				<div className="min-w-0 flex-1 space-y-1.5">
-					<div className="flex items-center gap-2">
-						<Skeleton className="h-5 w-40" />
-						<Skeleton className="h-5 w-12" />
-					</div>
-					<Skeleton className="h-4 w-48" />
-				</div>
-				<div className="hidden items-center gap-6 lg:flex">
-					<Skeleton className="h-6 w-20" />
-					<div className="w-16 space-y-1 text-right">
-						<Skeleton className="ml-auto h-5 w-12" />
-						<Skeleton className="ml-auto h-3 w-10" />
-					</div>
-					<div className="w-16 space-y-1 text-right">
-						<Skeleton className="ml-auto h-5 w-10" />
-						<Skeleton className="ml-auto h-3 w-14" />
-					</div>
-				</div>
-				<Skeleton className="size-8 shrink-0" />
+		<div className="flex h-15 items-center gap-4 border-border/80 border-b px-4 last:border-b-0">
+			<Skeleton className="size-8 rounded" />
+			<div className="min-w-0 flex-1 space-y-1.5">
+				<Skeleton className="h-4 w-36" />
+				<Skeleton className="h-3 w-48 max-w-full" />
 			</div>
+			<div className="hidden items-center gap-3 lg:flex">
+				<Skeleton className="h-5 w-32 rounded lg:w-44" />
+				<Skeleton className="h-4 w-10 rounded" />
+				<Skeleton className="h-4 w-10 rounded" />
+			</div>
+			<Skeleton className="ms-auto h-4 w-12 rounded lg:hidden" />
+			<Skeleton className="size-8 rounded" />
 		</div>
 	);
 }
