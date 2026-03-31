@@ -15,7 +15,7 @@ Use this file when the task spans multiple packages or when the right edit locat
   - client hooks
   - auth-aware frontend flows
   - query and mutation consumers
-- **DataList** (`components/data-list.tsx`): compound component for all list views. See `design-system.mdc` for patterns.
+- **List** (`components/ui/composables/list.tsx`) and **Chart** (`components/ui/composables/chart.tsx`): compound shells for list pages and charts; see `design-system.mdc` for patterns.
 - Agent chat: [`contexts/chat-context.tsx`](/Users/iza/Dev/Databuddy/apps/dashboard/contexts/chat-context.tsx) — `useChat` must start with `messages: []` on server **and** first client paint; restore `getMessagesFromLocal` in `useLayoutEffect` and gate `saveMessagesToLocal` until `hasRestoredFromLocal`, or SSR/hydration will disagree (empty vs persisted thread). UI: [`agent-messages.tsx`](/Users/iza/Dev/Databuddy/apps/dashboard/app/(main)/websites/[id]/agent/_components/agent-messages.tsx) merges consecutive identical tool labels (`formatToolLabel`) when the same tool+input repeats (`· 2×`); bottom `StreamingIndicator` only when no assistant text **and** no active tool label (`displayMessage`), so the in-message `ToolStep` is not duplicated by the shimmer.
 - Analytics agent web search: [`web-search.ts`](/Users/iza/Dev/Databuddy/apps/api/src/ai/tools/web-search.ts) (Perplexity). Tool labels in dashboard [`tool-display.tsx`](/Users/iza/Dev/Databuddy/apps/dashboard/lib/tool-display.tsx).
 

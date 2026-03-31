@@ -7,7 +7,7 @@ import {
 	PencilSimpleIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -87,8 +87,8 @@ export function GoalItem({
 	const TypeIcon = config.icon;
 
 	return (
-		<DataList.Row align="start" className={cn(!goal.isActive && "opacity-50")}>
-			<DataList.Cell className="pt-0.5">
+		<List.Row align="start" className={cn(!goal.isActive && "opacity-50")}>
+			<List.Cell className="pt-0.5">
 				<div
 					className={cn(
 						"flex size-8 items-center justify-center rounded",
@@ -97,21 +97,21 @@ export function GoalItem({
 				>
 					<TypeIcon className="size-4" weight="duotone" />
 				</div>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="w-40 min-w-0 lg:w-52">
+			<List.Cell className="w-40 min-w-0 lg:w-52">
 				<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
 					{goal.name}
 				</p>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell grow>
+			<List.Cell grow>
 				<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
 					{goal.target}
 				</p>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
+			<List.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
 				{isLoadingAnalytics ? (
 					<>
 						<Skeleton className="h-5 w-32 rounded lg:w-44" />
@@ -141,9 +141,9 @@ export function GoalItem({
 						</div>
 					</>
 				)}
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="w-14 pt-0.5 text-right lg:hidden">
+			<List.Cell className="w-14 pt-0.5 text-right lg:hidden">
 				{isLoadingAnalytics ? (
 					<Skeleton className="ms-auto h-4 w-12 rounded" />
 				) : (
@@ -151,9 +151,9 @@ export function GoalItem({
 						{rate.toFixed(1)}%
 					</span>
 				)}
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell action className="pt-0.5">
+			<List.Cell action className="pt-0.5">
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<Button
@@ -182,8 +182,8 @@ export function GoalItem({
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
-			</DataList.Cell>
-		</DataList.Row>
+			</List.Cell>
+		</List.Row>
 	);
 }
 

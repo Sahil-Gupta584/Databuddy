@@ -190,8 +190,8 @@ export function WebsitePageHeader({
 						<p>Unlimited on your current plan</p>
 					) : withinLimit && typeof limit === "number" ? (
 						<p className="max-w-xs">
-							You've created {currentUsage} out of{" "}
-							{formatLocaleNumber(limit)} available on your current plan.
+							You've created {currentUsage} out of {formatLocaleNumber(limit)}{" "}
+							available on your current plan.
 							{currentUsage / limit >= 0.8 && (
 								<>
 									<br />

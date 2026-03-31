@@ -5,7 +5,6 @@ import { CursorIcon } from "@phosphor-icons/react/dist/ssr/Cursor";
 import { GlobeIcon } from "@phosphor-icons/react/dist/ssr/Globe";
 import { TimerIcon } from "@phosphor-icons/react/dist/ssr/Timer";
 import { UsersIcon } from "@phosphor-icons/react/dist/ssr/Users";
-import { WarningIcon } from "@phosphor-icons/react/dist/ssr/Warning";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useAtom } from "jotai";
 import dynamic from "next/dynamic";
@@ -16,9 +15,7 @@ import {
 	StatCard,
 	UnauthorizedAccessError,
 } from "@/components/analytics";
-import { MetricsChartWithAnnotations } from "@/components/charts/metrics-chart-with-annotations";
 import { BrowserIcon, OSIcon } from "@/components/icon";
-import { SectionBrandOverlay } from "@/components/logo/section-brand-overlay";
 import { DataTable } from "@/components/table/data-table";
 import {
 	createMetricColumns,
@@ -39,6 +36,7 @@ import {
 } from "../utils/analytics-helpers";
 import { PercentageBadge } from "../utils/technology-helpers";
 import type { FullTabProps, MetricPoint } from "../utils/types";
+import { TrafficTrendsChart } from "./overview/_components/traffic-trends-chart";
 
 const GeoMapSection = dynamic(() =>
 	import("./overview/_components/geo-map-section").then((mod) => ({
@@ -218,7 +216,7 @@ export function WebsiteOverviewTab({
 		[dateRange.granularity, filters, previousPeriodRange]
 	);
 
-	const { isLoading, error, getDataForQuery } = useBatchDynamicQuery(
+	const { isLoading, isError, error, getDataForQuery } = useBatchDynamicQuery(
 		websiteId,
 		dateRange,
 		queries
@@ -940,52 +938,16 @@ export function WebsiteOverviewTab({
 				))}
 			</div>
 
-			{/* Chart */}
-			<div className="rounded border bg-sidebar">
-				<div className="flex flex-row items-start justify-between gap-3 border-b px-3 py-2.5 sm:items-center sm:px-4 sm:py-3">
-					<div className="min-w-0 flex-1">
-						<h2 className="text-balance font-semibold text-base text-sidebar-foreground sm:text-lg">
-							Traffic Trends
-						</h2>
-						<p className="text-pretty text-sidebar-foreground/70 text-xs sm:text-sm">
-							{dateRange.granularity === "hourly" ? "Hourly" : "Daily"} traffic
-							data
-						</p>
-						{dateRange.granularity === "hourly" && dateDiff > 7 && (
-							<div className="mt-1 flex items-start gap-1 text-amber-600 text-xs">
-								<WarningIcon
-									className="mt-0.5 shrink-0"
-									size={14}
-									weight="fill"
-								/>
-								<span className="leading-relaxed">
-									Large date ranges may affect performance
-								</span>
-							</div>
-						)}
-					</div>
-					<SectionBrandOverlay layout="inline" />
-				</div>
-				<div className="overflow-x-auto">
-					<MetricsChartWithAnnotations
-						className="rounded border-0"
-						data={chartData}
-						dateRange={{
-							startDate: new Date(dateRange.start_date),
-							endDate: new Date(dateRange.end_date),
-							granularity: dateRange.granularity as
-								| "hourly"
-								| "daily"
-								| "weekly"
-								| "monthly",
-						}}
-						height={isMobile ? 250 : 350}
-						isLoading={isLoading}
-						onRangeSelect={setDateRangeAction}
-						websiteId={websiteId}
-					/>
-				</div>
-			</div>
+			<TrafficTrendsChart
+				chartData={chartData}
+				dateDiff={dateDiff}
+				dateRange={dateRange}
+				isError={isError}
+				isLoading={isLoading}
+				isMobile={isMobile}
+				onRangeSelect={setDateRangeAction}
+				websiteId={websiteId}
+			/>
 
 			{/* Tables */}
 			<div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">

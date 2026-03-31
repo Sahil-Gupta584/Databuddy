@@ -6,7 +6,7 @@ import {
 	PencilSimpleIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -130,7 +130,7 @@ export function FunnelItem({
 
 	return (
 		<div className={cn("w-full", className)}>
-			<DataList.Row
+			<List.Row
 				asChild
 				className={cn(isExpanded && "bg-accent/30", isLast && "border-b-0")}
 			>
@@ -144,7 +144,7 @@ export function FunnelItem({
 					tabIndex={0}
 					type="button"
 				>
-					<DataList.Cell>
+					<List.Cell>
 						<div
 							className={cn(
 								"flex size-8 shrink-0 items-center justify-center rounded border transition-colors",
@@ -161,9 +161,9 @@ export function FunnelItem({
 								weight="fill"
 							/>
 						</div>
-					</DataList.Cell>
+					</List.Cell>
 
-					<DataList.Cell className="min-w-0" grow>
+					<List.Cell className="min-w-0" grow>
 						<div className="w-full text-start">
 							<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
 								{funnel.name}
@@ -174,9 +174,9 @@ export function FunnelItem({
 								</p>
 							) : null}
 						</div>
-					</DataList.Cell>
+					</List.Cell>
 
-					<DataList.Cell className="hidden items-center gap-3 lg:flex">
+					<List.Cell className="hidden items-center gap-3 lg:flex">
 						{isLoadingAnalytics ? (
 							<>
 								<Skeleton className="h-5 w-32 rounded lg:w-44" />
@@ -208,9 +208,9 @@ export function FunnelItem({
 								</div>
 							</>
 						)}
-					</DataList.Cell>
+					</List.Cell>
 
-					<DataList.Cell className="w-14 text-right lg:hidden">
+					<List.Cell className="w-14 text-right lg:hidden">
 						{isLoadingAnalytics ? (
 							<Skeleton className="ms-auto h-4 w-12 rounded" />
 						) : (
@@ -218,9 +218,9 @@ export function FunnelItem({
 								{conversionRate.toFixed(1)}%
 							</span>
 						)}
-					</DataList.Cell>
+					</List.Cell>
 
-					<DataList.Cell action>
+					<List.Cell action>
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
@@ -255,9 +255,9 @@ export function FunnelItem({
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
-					</DataList.Cell>
+					</List.Cell>
 				</button>
-			</DataList.Row>
+			</List.Row>
 
 			{isExpanded ? (
 				<section className="border-border/80 border-t bg-background">

@@ -1,6 +1,6 @@
 "use client";
 
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import type { FunnelAnalyticsData } from "@/types/funnels";
 import { FunnelItem, type FunnelItemData } from "./funnel-item";
 
@@ -26,7 +26,7 @@ export function FunnelsList({
 	children,
 }: FunnelsListProps) {
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{funnels.map((funnel, index) => (
 				<FunnelItem
 					analytics={analyticsMap?.get(funnel.id)}
@@ -42,6 +42,6 @@ export function FunnelsList({
 					{children?.(funnel)}
 				</FunnelItem>
 			))}
-		</DataList>
+		</List>
 	);
 }

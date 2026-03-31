@@ -2,7 +2,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 
 /**
  * Single place to derive list UI state from TanStack Query + optional gate loading.
- * Use with DataList.Content so pages don’t hand-roll loading → null → content flashes.
+ * Use with List.Content so pages don’t hand-roll loading → null → content flashes.
  */
 export type ListQueryOutcome<T> =
 	| { status: "empty" }
@@ -41,7 +41,7 @@ export type ListQuerySlice<T> = Pick<
 	"data" | "isPending" | "isError" | "isSuccess"
 >;
 
-/** Infers list state from a TanStack array query — pass to DataList.Content as `query` instead of calling listQueryOutcome yourself. */
+/** Infers list state from a TanStack array query — pass to List.Content as `query` instead of calling listQueryOutcome yourself. */
 export function listQueryOutcomeFromQuery<T>(
 	query: ListQuerySlice<T>,
 	options?: { gatePending?: boolean }

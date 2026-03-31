@@ -1,7 +1,7 @@
 "use client";
 
 import { TargetIcon } from "@phosphor-icons/react/dist/ssr/Target";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { EmptyState } from "@/components/empty-state";
 import type { Goal } from "@/hooks/use-goals";
 import { GoalItem } from "./goal-item";
@@ -59,7 +59,7 @@ export function GoalsList({
 	}
 
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{goals.map((goal) => {
 				const analytics = goalAnalytics[goal.id];
 				const validAnalytics =
@@ -76,6 +76,6 @@ export function GoalsList({
 					/>
 				);
 			})}
-		</DataList>
+		</List>
 	);
 }

@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FaviconImage } from "@/components/analytics/favicon-image";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -309,13 +309,13 @@ export function MonitorRow({
 	};
 
 	return (
-		<DataList.Row
+		<List.Row
 			align="start"
 			asChild
 			className={cn(!isActive && "opacity-50")}
 		>
 			<Link href={`/monitors/${schedule.id}`} onClick={handleClick}>
-				<DataList.Cell className="pt-0.5">
+				<List.Cell className="pt-0.5">
 					<div
 						className={cn(
 							"flex size-8 items-center justify-center rounded",
@@ -337,56 +337,56 @@ export function MonitorRow({
 							<HeartbeatIcon className="size-4" weight="duotone" />
 						)}
 					</div>
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell className="w-40 min-w-0 lg:w-52">
+				<List.Cell className="w-40 min-w-0 lg:w-52">
 					<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
 						{displayName}
 					</p>
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell grow>
+				<List.Cell grow>
 					<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
 						{displayUrl}
 					</p>
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell className="hidden w-14 pt-0.5 text-muted-foreground text-xs tabular-nums md:block">
+				<List.Cell className="hidden w-14 pt-0.5 text-muted-foreground text-xs tabular-nums md:block">
 					{GRANULARITY_LABELS[schedule.granularity] || schedule.granularity}
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell className="hidden w-16 pt-0.5 md:block">
+				<List.Cell className="hidden w-16 pt-0.5 md:block">
 					{schedule.isPublic ? (
 						<Badge className="gap-1" variant="outline">
 							<GlobeIcon className="size-3" weight="duotone" />
 							Public
 						</Badge>
 					) : null}
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
+				<List.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
 					<MiniHeatmap
 						isActive={isActive}
 						scheduleId={schedule.id}
 						websiteId={schedule.websiteId}
 					/>
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell className="w-16 pt-0.5">
+				<List.Cell className="w-16 pt-0.5">
 					<Badge className="shrink-0" variant={isActive ? "green" : "amber"}>
 						{isActive ? "Active" : "Paused"}
 					</Badge>
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell action className="pt-0.5">
+				<List.Cell action className="pt-0.5">
 					<MonitorActions
 						onDeleteAction={onDeleteAction}
 						onEditAction={onEditAction}
 						onRefetchAction={onRefetchAction}
 						schedule={schedule}
 					/>
-				</DataList.Cell>
+				</List.Cell>
 			</Link>
-		</DataList.Row>
+		</List.Row>
 	);
 }

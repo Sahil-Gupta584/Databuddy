@@ -9,7 +9,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { PageHeader } from "@/app/(main)/websites/_components/page-header";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { FeatureAccessGate } from "@/components/feature-access-gate";
 import { MonitorRow } from "@/components/monitors/monitor-row";
@@ -134,9 +134,9 @@ export default function MonitorsPage() {
 
 				<FeatureAccessGate
 					flagKey="monitors"
-					loadingFallback={<DataList.DefaultLoading />}
+					loadingFallback={<List.DefaultLoading />}
 				>
-					<DataList.Content<Monitor>
+					<List.Content<Monitor>
 						emptyProps={{
 							action: {
 								label: "Create Your First Monitor",
@@ -160,7 +160,7 @@ export default function MonitorsPage() {
 						query={schedulesQuery as ListQuerySlice<Monitor>}
 					>
 						{(items) => (
-							<DataList className="rounded bg-card">
+							<List className="rounded bg-card">
 								{items.map((monitor) => (
 									<MonitorRow
 										key={monitor.id}
@@ -170,9 +170,9 @@ export default function MonitorsPage() {
 										schedule={monitor}
 									/>
 								))}
-							</DataList>
+							</List>
 						)}
-					</DataList.Content>
+					</List.Content>
 				</FeatureAccessGate>
 
 				{isSheetOpen && (

@@ -9,33 +9,33 @@ import type {
 import { listQueryOutcomeFromQuery } from "@/lib/list-query-outcome";
 import { cn } from "@/lib/utils";
 
-interface DataListRootProps {
+interface ListRootProps {
 	children: ReactNode;
 	className?: string;
 }
 
-function DataListRoot({ children, className }: DataListRootProps) {
+function ListRoot({ children, className }: ListRootProps) {
 	return (
 		<div
 			className={cn("w-full overflow-x-auto", className)}
-			data-slot="data-list"
+			data-slot="list"
 		>
 			{children}
 		</div>
 	);
 }
 
-interface DataListHeadProps {
+interface ListHeadProps {
 	children: ReactNode;
 	className?: string;
 	sticky?: boolean;
 }
 
-function DataListHead({
+function ListHead({
 	children,
 	className,
 	sticky = false,
-}: DataListHeadProps) {
+}: ListHeadProps) {
 	return (
 		<div
 			className={cn(
@@ -43,14 +43,14 @@ function DataListHead({
 				sticky && "sticky top-0 z-10",
 				className
 			)}
-			data-slot="data-list-head"
+			data-slot="list-head"
 		>
 			{children}
 		</div>
 	);
 }
 
-interface DataListRowProps {
+interface ListRowProps {
 	align?: "center" | "start";
 	asChild?: boolean;
 	children: ReactNode;
@@ -59,14 +59,14 @@ interface DataListRowProps {
 	interactive?: boolean;
 }
 
-function DataListRow({
+function ListRow({
 	align = "center",
 	asChild = false,
 	children,
 	className,
 	density = "comfortable",
 	interactive = true,
-}: DataListRowProps) {
+}: ListRowProps) {
 	const Comp = asChild ? Slot : "div";
 	return (
 		<Comp
@@ -78,20 +78,20 @@ function DataListRow({
 				interactive && "hover:bg-accent/50",
 				className
 			)}
-			data-slot="data-list-row"
+			data-slot="list-row"
 		>
 			{children}
 		</Comp>
 	);
 }
 
-interface DataListCellProps extends ComponentPropsWithoutRef<"div"> {
+interface ListCellProps extends ComponentPropsWithoutRef<"div"> {
 	action?: boolean;
 	align?: "start" | "center" | "end";
 	grow?: boolean;
 }
 
-function DataListCell({
+function ListCell({
 	action = false,
 	align = "start",
 	children,
@@ -100,13 +100,13 @@ function DataListCell({
 	onClick,
 	onKeyDown,
 	...props
-}: DataListCellProps) {
+}: ListCellProps) {
 	if (action) {
 		return (
 			<div
 				{...props}
 				className={cn("shrink-0", className)}
-				data-slot="data-list-cell"
+				data-slot="list-cell"
 				onClick={(e) => {
 					e.preventDefault();
 					e.stopPropagation();
@@ -133,7 +133,7 @@ function DataListCell({
 				align === "end" && "text-balance text-right",
 				className
 			)}
-			data-slot="data-list-cell"
+			data-slot="list-cell"
 			{...props}
 		>
 			{children}
@@ -141,7 +141,7 @@ function DataListCell({
 	);
 }
 
-interface DataListContentBaseProps<T> {
+interface ListContentBaseProps<T> {
 	children: (items: T[]) => ReactNode;
 	/** Shown when outcome is empty; overrides emptyProps */
 	empty?: ReactNode;
@@ -151,31 +151,31 @@ interface DataListContentBaseProps<T> {
 	error?: ReactNode;
 	/** Passed to EmptyState with variant `error` when outcome is error (unless `error` is set) */
 	errorProps?: EmptyStateProps;
-	/** Shown when outcome is loading; defaults to DataList.DefaultLoading */
+	/** Shown when outcome is loading; defaults to List.DefaultLoading */
 	loading?: ReactNode;
 	/** Wrapper for default EmptyState branches (not applied to custom `empty` / `error` nodes) */
 	stateWrapperClassName?: string;
 }
 
-type DataListContentProps<T> =
-	| (DataListContentBaseProps<T> & {
+type ListContentProps<T> =
+	| (ListContentBaseProps<T> & {
 			gatePending?: never;
 			outcome: ListQueryOutcome<T>;
 			query?: never;
 	  })
-	| (DataListContentBaseProps<T> & {
+	| (ListContentBaseProps<T> & {
 			gatePending?: boolean;
 			outcome?: never;
 			query: ListQuerySlice<T>;
 	  });
 
-function DataListDefaultLoading() {
+function ListDefaultLoading() {
 	return (
-		<DataListRoot className="rounded bg-card">
+		<ListRoot className="rounded bg-card">
 			{Array.from({ length: 5 }).map((_, i) => (
 				<div
 					className="flex min-h-15 items-start gap-4 border-border/80 border-b px-4 py-3 last:border-b-0"
-					key={`data-list-skeleton-${i + 1}`}
+					key={`list-skeleton-${i + 1}`}
 				>
 					<Skeleton className="size-8 shrink-0 rounded" />
 					<Skeleton className="h-4 w-28 shrink-0" />
@@ -184,11 +184,11 @@ function DataListDefaultLoading() {
 					<Skeleton className="h-4 w-20 shrink-0" />
 				</div>
 			))}
-		</DataListRoot>
+		</ListRoot>
 	);
 }
 
-function DataListContent<T>({
+function ListContent<T>({
 	children,
 	empty,
 	emptyProps,
@@ -199,12 +199,12 @@ function DataListContent<T>({
 	outcome: outcomeProp,
 	query,
 	stateWrapperClassName,
-}: DataListContentProps<T>) {
+}: ListContentProps<T>) {
 	const outcome =
 		outcomeProp ??
 		(query ? listQueryOutcomeFromQuery(query, { gatePending }) : undefined);
 	if (!outcome) {
-		throw new Error("DataList.Content requires `query` or `outcome`");
+		throw new Error("List.Content requires `query` or `outcome`");
 	}
 
 	const stateShell = (node: ReactNode) => (
@@ -219,7 +219,7 @@ function DataListContent<T>({
 	);
 
 	if (outcome.status === "loading") {
-		return loading ?? <DataListDefaultLoading />;
+		return loading ?? <ListDefaultLoading />;
 	}
 	if (outcome.status === "error") {
 		if (error !== undefined) {
@@ -246,18 +246,18 @@ function DataListContent<T>({
 	return children(outcome.items);
 }
 
-DataListRoot.displayName = "DataList";
+ListRoot.displayName = "List";
 
-export const DataList = Object.assign(DataListRoot, {
-	Cell: DataListCell,
-	Content: DataListContent,
-	DefaultLoading: DataListDefaultLoading,
-	Head: DataListHead,
-	Row: DataListRow,
-}) as typeof DataListRoot & {
-	Cell: typeof DataListCell;
-	Content: typeof DataListContent;
-	DefaultLoading: typeof DataListDefaultLoading;
-	Head: typeof DataListHead;
-	Row: typeof DataListRow;
+export const List = Object.assign(ListRoot, {
+	Cell: ListCell,
+	Content: ListContent,
+	DefaultLoading: ListDefaultLoading,
+	Head: ListHead,
+	Row: ListRow,
+}) as typeof ListRoot & {
+	Cell: typeof ListCell;
+	Content: typeof ListContent;
+	DefaultLoading: typeof ListDefaultLoading;
+	Head: typeof ListHead;
+	Row: typeof ListRow;
 };

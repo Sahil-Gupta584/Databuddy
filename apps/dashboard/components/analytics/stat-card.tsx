@@ -1,19 +1,22 @@
+"use client";
+
 import { MinusIcon, TrendDownIcon, TrendUpIcon } from "@phosphor-icons/react";
-import { type ElementType, memo } from "react";
+import { type ElementType, memo, useMemo } from "react";
 import {
 	Area,
-	AreaChart,
 	Bar,
 	BarChart,
+	ComposedChart,
+	Customized,
 	Line,
-	LineChart,
 	ResponsiveContainer,
 	Tooltip,
 	XAxis,
 	YAxis,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/chart-error-boundary";
-import { Card } from "@/components/ui/card";
+import { useDynamicDasharray } from "@/components/charts/use-dynamic-dasharray";
+import { Chart } from "@/components/ui/composables/chart";
 import {
 	HoverCard,
 	HoverCardContent,
@@ -66,6 +69,8 @@ interface StatCardProps {
 	formatValue?: (value: number) => string;
 	formatChartValue?: (value: number) => string;
 	displayMode?: StatCardDisplayMode;
+	/** Dashed stroke on the last segment (incomplete period), matching main traffic charts. */
+	partialLastSegment?: boolean;
 }
 
 const formatTrendValue = (
@@ -138,6 +143,7 @@ const MiniChart = memo(
 		title,
 		chartType = "area",
 		chartStepType = "monotone",
+		partialLastSegment = true,
 	}: {
 		data: MiniChartDataPoint[];
 		id: string;
@@ -145,7 +151,32 @@ const MiniChart = memo(
 		title?: string;
 		chartType?: ChartType;
 		chartStepType?: ChartStepType;
+		partialLastSegment?: boolean;
 	}) => {
+		const dashSplitIndex = useMemo(() => {
+			if (!partialLastSegment) {
+				return data.length;
+			}
+			return data.length - 2;
+		}, [partialLastSegment, data.length]);
+
+		const curveAdjustment =
+			chartStepType === "step" ||
+			chartStepType === "stepBefore" ||
+			chartStepType === "stepAfter"
+				? 0
+				: 1;
+
+		const [DasharrayCalculator, lineDasharrays] = useDynamicDasharray({
+			chartType: chartStepType,
+			curveAdjustment,
+			splitIndex: dashSplitIndex,
+		});
+
+		const strokeDashForValue =
+			lineDasharrays.find((line) => line.name === "value")?.strokeDasharray ||
+			"0 0";
+
 		const hasData = data && data.length > 0;
 		const hasVariation = hasData && data.some((d) => d.value !== data[0].value);
 
@@ -233,7 +264,7 @@ const MiniChart = memo(
 					);
 				case "line":
 					return (
-						<LineChart
+						<ComposedChart
 							data={data}
 							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
 						>
@@ -270,14 +301,16 @@ const MiniChart = memo(
 								dataKey="value"
 								dot={false}
 								stroke="var(--color-chart-1)"
+								strokeDasharray={strokeDashForValue}
 								strokeWidth={1.5}
 								type={chartStepType}
 							/>
-						</LineChart>
+							<Customized component={DasharrayCalculator} />
+						</ComposedChart>
 					);
 				case "area":
 					return (
-						<AreaChart
+						<ComposedChart
 							data={data}
 							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
 						>
@@ -341,14 +374,16 @@ const MiniChart = memo(
 								dot={false}
 								fill={`url(#gradient-${id})`}
 								stroke="var(--color-chart-1)"
+								strokeDasharray={strokeDashForValue}
 								strokeWidth={1.5}
 								type={chartStepType}
 							/>
-						</AreaChart>
+							<Customized component={DasharrayCalculator} />
+						</ComposedChart>
 					);
 				default:
 					return (
-						<AreaChart
+						<ComposedChart
 							data={data}
 							margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
 						>
@@ -412,10 +447,12 @@ const MiniChart = memo(
 								dot={false}
 								fill={`url(#gradient-${id})`}
 								stroke="var(--color-chart-1)"
+								strokeDasharray={strokeDashForValue}
 								strokeWidth={1.5}
 								type={chartStepType}
 							/>
-						</AreaChart>
+							<Customized component={DasharrayCalculator} />
+						</ComposedChart>
 					);
 			}
 		};
@@ -456,6 +493,7 @@ export function StatCard({
 	formatValue,
 	formatChartValue,
 	displayMode,
+	partialLastSegment = true,
 }: StatCardProps) {
 	const trendValue =
 		typeof trend === "object" && trend !== null ? trend.change : trend;
@@ -467,21 +505,21 @@ export function StatCard({
 
 	if (isLoading) {
 		return (
-			<Card
-				className={cn("gap-0 overflow-hidden border bg-card py-0", className)}
+			<Chart
+				className={cn("gap-0 overflow-hidden py-0", className)}
 				id={id}
 			>
 				{resolvedDisplayMode === "text" && (
-					<div className="dotted-bg flex h-26 items-center justify-center bg-accent">
+					<Chart.Plot className="flex h-26 items-center justify-center">
 						<Skeleton className="h-10 w-28 rounded" />
-					</div>
+					</Chart.Plot>
 				)}
 				{resolvedDisplayMode === "chart" && (
-					<div className="dotted-bg bg-accent pt-2">
+					<Chart.Plot className="pt-2">
 						<Skeleton className="h-[102px] w-full rounded" />
-					</div>
+					</Chart.Plot>
 				)}
-				<div className="flex items-center gap-2.5 px-2.5 py-2.5">
+				<Chart.Footer className="border-t-0">
 					{Icon && (
 						<div className="flex size-7 shrink-0 items-center justify-center rounded bg-accent">
 							<Skeleton className="size-4 rounded" />
@@ -497,8 +535,8 @@ export function StatCard({
 							<Skeleton className="h-3.5 w-9 rounded" />
 						</div>
 					)}
-				</div>
-			</Card>
+				</Chart.Footer>
+			</Chart>
 		);
 	}
 
@@ -510,33 +548,34 @@ export function StatCard({
 			: formatMetricNumber(value);
 
 	const cardContent = (
-		<Card
+		<Chart
 			className={cn(
-				"group gap-0 overflow-hidden border bg-card py-0 hover:border-primary",
+				"group gap-0 overflow-hidden py-0 hover:border-primary",
 				className
 			)}
 			id={id}
 		>
 			{hasValidChartData && (
-				<div className="dotted-bg bg-accent pt-2">
+				<Chart.Plot className="pt-2">
 					<MiniChart
 						chartStepType={chartStepType}
 						chartType={chartType}
 						data={chartData}
 						formatChartValue={formatChartValue}
 						id={id || `chart-${title.toLowerCase().replace(/\s/g, "-")}`}
+						partialLastSegment={partialLastSegment}
 						title={title}
 					/>
-				</div>
+				</Chart.Plot>
 			)}
 			{resolvedDisplayMode === "text" && (
-				<div className="dotted-bg flex h-26 items-center justify-center bg-accent">
+				<Chart.Plot className="flex h-26 items-center justify-center">
 					<span className="font-bold text-4xl text-foreground tabular-nums">
 						{displayValue}
 					</span>
-				</div>
+				</Chart.Plot>
 			)}
-			<div className="flex items-center gap-2.5 px-2.5 py-2.5">
+			<Chart.Footer className="border-t-0">
 				{Icon && (
 					<div className="flex size-7 shrink-0 items-center justify-center rounded bg-accent">
 						<Icon className="size-4 text-muted-foreground" weight="duotone" />
@@ -573,8 +612,8 @@ export function StatCard({
 						<span className="text-muted-foreground text-xs">{description}</span>
 					) : null}
 				</div>
-			</div>
-		</Card>
+			</Chart.Footer>
+		</Chart>
 	);
 
 	if (

@@ -5,7 +5,7 @@ import { FunnelIcon } from "@phosphor-icons/react/dist/ssr/Funnel";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { FeatureGate } from "@/components/feature-gate";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { useAutocompleteData } from "@/hooks/use-autocomplete";
@@ -35,11 +35,11 @@ const EditFunnelDialog = dynamic(
 
 function FunnelsListSkeleton() {
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{[1, 2, 3].map((i) => (
 				<FunnelItemSkeleton key={i} />
 			))}
-		</DataList>
+		</List>
 	);
 }
 
@@ -159,7 +159,7 @@ export default function FunnelsPage() {
 				/>
 
 				<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
-					<DataList.Content
+					<List.Content
 						emptyProps={{
 							action: {
 								label: "Create Your First Funnel",
@@ -231,7 +231,7 @@ export default function FunnelsPage() {
 								}}
 							</FunnelsList>
 						)}
-					</DataList.Content>
+					</List.Content>
 				</div>
 
 				{editing !== null && (

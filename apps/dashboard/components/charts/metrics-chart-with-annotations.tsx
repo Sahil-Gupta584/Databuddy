@@ -32,8 +32,6 @@ interface MetricsChartWithAnnotationsProps {
 	data: ChartDataRow[] | undefined;
 	isLoading: boolean;
 	height?: number;
-	title?: string;
-	description?: string;
 	className?: string;
 	metricsFilter?: (metric: MetricConfig) => boolean;
 	showLegend?: boolean;
@@ -43,6 +41,7 @@ interface MetricsChartWithAnnotationsProps {
 		endDate: Date;
 		granularity: "hourly" | "daily" | "weekly" | "monthly";
 	};
+	embedded?: boolean;
 }
 
 export function MetricsChartWithAnnotations({
@@ -50,13 +49,12 @@ export function MetricsChartWithAnnotations({
 	data,
 	isLoading,
 	height = 550,
-	title,
-	description,
 	className,
 	metricsFilter,
 	showLegend = true,
 	onRangeSelect,
 	dateRange,
+	embedded = false,
 }: MetricsChartWithAnnotationsProps) {
 	const [editingAnnotation, setEditingAnnotation] = useState<Annotation | null>(
 		null
@@ -214,7 +212,7 @@ export function MetricsChartWithAnnotations({
 				annotations={(annotations || []) as Annotation[]}
 				className={className}
 				data={data}
-				description={description}
+				embedded={embedded}
 				granularity={dateRange?.granularity}
 				height={height}
 				isLoading={isLoading}
@@ -226,7 +224,6 @@ export function MetricsChartWithAnnotations({
 				onToggleAnnotations={setShowAnnotations}
 				showAnnotations={showAnnotations}
 				showLegend={showLegend}
-				title={title}
 				websiteId={websiteId}
 			/>
 

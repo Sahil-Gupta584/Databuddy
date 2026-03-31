@@ -544,6 +544,7 @@ export default function VitalsPage() {
 						height={300}
 						isLoading={isLoading}
 						metrics={chartMetrics}
+						partialLastSegment
 						title="Performance Trend"
 					/>
 				) : (

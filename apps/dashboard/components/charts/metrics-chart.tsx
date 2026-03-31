@@ -131,8 +131,6 @@ interface MetricsChartProps {
 	data: ChartDataRow[] | undefined;
 	isLoading: boolean;
 	height?: number;
-	title?: string;
-	description?: string;
 	className?: string;
 	metricsFilter?: (metric: MetricConfig) => boolean;
 	showLegend?: boolean;
@@ -153,6 +151,8 @@ interface MetricsChartProps {
 	onToggleAnnotations?: (show: boolean) => void;
 	websiteId?: string;
 	granularity?: "hourly" | "daily" | "weekly" | "monthly";
+	/** When true, omit outer card chrome — parent provides shell (e.g. composable `Chart`). */
+	embedded?: boolean;
 }
 
 function formatAxisTickLabel(
@@ -181,7 +181,6 @@ export function MetricsChart({
 	data,
 	isLoading,
 	height = 550,
-	title,
 	className,
 	metricsFilter,
 	showLegend = true,
@@ -194,6 +193,7 @@ export function MetricsChart({
 	onToggleAnnotations,
 	websiteId,
 	granularity = "daily",
+	embedded = false,
 }: MetricsChartProps) {
 	const rawData = data || [];
 	const [refAreaLeft, setRefAreaLeft] = useState<string | null>(null);
@@ -324,12 +324,18 @@ export function MetricsChart({
 	};
 
 	if (isLoading) {
+		if (embedded) {
+			return null;
+		}
 		return (
 			<SkeletonChart className={cn("w-full", className)} height={height} />
 		);
 	}
 
 	if (!chartData.length) {
+		if (embedded) {
+			return null;
+		}
 		return (
 			<div
 				className={cn(
@@ -357,7 +363,12 @@ export function MetricsChart({
 
 	return (
 		<div
-			className={cn("w-full overflow-hidden rounded border bg-card", className)}
+			className={cn(
+				embedded
+					? "w-full overflow-hidden"
+					: "w-full overflow-hidden rounded border bg-card",
+				className
+			)}
 		>
 			<div className="p-0">
 				<div

@@ -13,7 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -296,7 +296,7 @@ function FlagRow({
 	const dependencies = flag.dependencies ?? [];
 
 	return (
-		<DataList.Row
+		<List.Row
 			asChild
 			className={cn("min-w-full", flag.status === "archived" && "opacity-50")}
 		>
@@ -306,7 +306,7 @@ function FlagRow({
 				type="button"
 			>
 				{/* Flag name & key */}
-				<DataList.Cell
+				<List.Cell
 					className="min-w-0 max-w-[min(320px,100%)] shrink-0"
 					onClick={(e) => e.stopPropagation()}
 					onKeyDown={(e) => e.stopPropagation()}
@@ -334,33 +334,33 @@ function FlagRow({
 							<FlagKey className="-ms-1.5 max-w-full" flag={flag} />
 						</div>
 					</div>
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Description */}
-				<DataList.Cell grow>
+				<List.Cell grow>
 					{flag.description ? (
 						<p className="wrap-break-word text-pretty text-muted-foreground text-xs">
 							{flag.description}
 						</p>
 					) : null}
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Type */}
-				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+				<List.Cell className="flex w-[100px] shrink-0 justify-center">
 					<Badge className="font-normal" variant="secondary">
 						{typeConfig.label}
 					</Badge>
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Rollout */}
-				<DataList.Cell className="flex w-20 shrink-0 justify-center">
+				<List.Cell className="flex w-20 shrink-0 justify-center">
 					{flag.type === "rollout" && rollout > 0 && (
 						<RolloutProgress percentage={rollout} />
 					)}
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Rules & Variants */}
-				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+				<List.Cell className="flex w-[100px] shrink-0 justify-center">
 					{(ruleCount > 0 || variantCount > 0) && (
 						<div className="flex flex-col gap-0.5 text-center text-muted-foreground text-xs">
 							{ruleCount > 0 && (
@@ -373,15 +373,15 @@ function FlagRow({
 							)}
 						</div>
 					)}
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Groups */}
-				<DataList.Cell className="flex w-[100px] shrink-0 justify-center">
+				<List.Cell className="flex w-[100px] shrink-0 justify-center">
 					<GroupsDisplay groups={groups} />
-				</DataList.Cell>
+				</List.Cell>
 
 				{/* Status */}
-				<DataList.Cell
+				<List.Cell
 					className="flex w-[120px] shrink-0 justify-center"
 					onClick={(e) => e.stopPropagation()}
 					onKeyDown={(e) => e.stopPropagation()}
@@ -394,13 +394,13 @@ function FlagRow({
 					) : (
 						<StatusToggle flag={flag} />
 					)}
-				</DataList.Cell>
+				</List.Cell>
 
-				<DataList.Cell action>
+				<List.Cell action>
 					<FlagActions flag={flag} onDelete={onDelete} onEdit={onEdit} />
-				</DataList.Cell>
+				</List.Cell>
 			</button>
-		</DataList.Row>
+		</List.Row>
 	);
 }
 
@@ -428,7 +428,7 @@ export function FlagsList({ flags, groups, onEdit, onDelete }: FlagsListProps) {
 	}, [flags]);
 
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{flags.map((flag) => (
 				<FlagRow
 					dependents={dependentsMap.get(flag.key) ?? []}
@@ -440,13 +440,13 @@ export function FlagsList({ flags, groups, onEdit, onDelete }: FlagsListProps) {
 					onEdit={onEdit}
 				/>
 			))}
-		</DataList>
+		</List>
 	);
 }
 
 export function FlagsListSkeleton() {
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{Array.from({ length: 5 }).map((_, i) => (
 				<div
 					className="flex min-h-15 items-center gap-4 border-border/80 border-b px-4 py-3 last:border-b-0"
@@ -482,6 +482,6 @@ export function FlagsListSkeleton() {
 					</div>
 				</div>
 			))}
-		</DataList>
+		</List>
 	);
 }

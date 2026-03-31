@@ -3,7 +3,7 @@
 import { CheckCircleIcon, WarningIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { use, useMemo } from "react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { listQueryOutcome } from "@/lib/list-query-outcome";
 import { orpc } from "@/lib/orpc";
 import { WebsitePageHeader } from "../../_components/website-page-header";
@@ -19,11 +19,11 @@ interface AnomaliesPageContentProps {
 
 function AnomaliesListSkeleton() {
 	return (
-		<DataList className="rounded bg-card">
+		<List className="rounded bg-card">
 			{[1, 2, 3].map((i) => (
 				<AnomalyItemSkeleton key={i} />
 			))}
-		</DataList>
+		</List>
 	);
 }
 
@@ -97,7 +97,7 @@ export function AnomaliesPageContent({ params }: AnomaliesPageContentProps) {
 			/>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-none">
-				<DataList.Content
+				<List.Content
 					emptyProps={{
 						description:
 							"No unusual patterns detected in the last hour compared to your 7-day baseline. We check pageviews, errors, and custom events automatically.",
@@ -114,16 +114,16 @@ export function AnomaliesPageContent({ params }: AnomaliesPageContentProps) {
 					outcome={outcome}
 				>
 					{(list) => (
-						<DataList className="rounded bg-card">
+						<List className="rounded bg-card">
 							{list.map((anomaly, idx) => (
 								<AnomalyItem
 									anomaly={anomaly}
 									key={`${anomaly.metric}-${anomaly.eventName ?? ""}-${idx}`}
 								/>
 							))}
-						</DataList>
+						</List>
 					)}
-				</DataList.Content>
+				</List.Content>
 			</div>
 		</div>
 	);

@@ -10,7 +10,7 @@ import {
 	WarningIcon,
 } from "@phosphor-icons/react";
 import type { ElementType } from "react";
-import { DataList } from "@/components/data-list";
+import { List } from "@/components/ui/composables/list";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -86,8 +86,8 @@ export function AnomalyItem({ anomaly }: AnomalyItemProps) {
 		anomaly.type === "spike" ? "text-destructive" : "text-blue-500";
 
 	return (
-		<DataList.Row align="start">
-			<DataList.Cell className="pt-0.5">
+		<List.Row align="start">
+			<List.Cell className="pt-0.5">
 				<div
 					className={cn(
 						"flex size-8 items-center justify-center rounded",
@@ -96,18 +96,18 @@ export function AnomalyItem({ anomaly }: AnomalyItemProps) {
 				>
 					<MetricIcon className="size-4" weight="duotone" />
 				</div>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="w-40 min-w-0 lg:w-52">
+			<List.Cell className="w-40 min-w-0 lg:w-52">
 				<p className="wrap-break-word text-pretty font-medium text-foreground text-sm">
 					{anomaly.eventName ?? config.label}
 				</p>
 				<p className="mt-0.5 text-muted-foreground text-xs tabular-nums">
 					{formatPeriod(anomaly.periodStart, anomaly.periodEnd)}
 				</p>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell grow>
+			<List.Cell grow>
 				<div className="flex items-center gap-2">
 					<Badge
 						className="gap-1"
@@ -120,9 +120,9 @@ export function AnomalyItem({ anomaly }: AnomalyItemProps) {
 						{anomaly.type === "spike" ? "Unusually high" : "Unusually low"}
 					</span>
 				</div>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
+			<List.Cell className="hidden items-start gap-3 pt-0.5 lg:flex">
 				<div className="flex w-16 flex-col items-end">
 					<span className="font-semibold text-sm tabular-nums">
 						{formatCompact(anomaly.currentValue)}
@@ -147,15 +147,15 @@ export function AnomalyItem({ anomaly }: AnomalyItemProps) {
 					</span>
 					<span className="text-muted-foreground text-xs">Change</span>
 				</div>
-			</DataList.Cell>
+			</List.Cell>
 
-			<DataList.Cell className="w-14 pt-0.5 text-right lg:hidden">
+			<List.Cell className="w-14 pt-0.5 text-right lg:hidden">
 				<span className={cn("font-semibold text-sm tabular-nums", changeColor)}>
 					{anomaly.percentChange > 0 ? "+" : ""}
 					{anomaly.percentChange.toFixed(1)}%
 				</span>
-			</DataList.Cell>
-		</DataList.Row>
+			</List.Cell>
+		</List.Row>
 	);
 }
 
