@@ -1,0 +1,77 @@
+name: Publish Docker Images
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build ${{ matrix.service }} (${{ matrix.platform }})
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, basket, links, uptime]
+        platform: [linux/amd64, linux/arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.platform != 'linux/amd64'
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract arch slug
+        id: platform
+        run: echo "arch=${PLATFORM##*/}" >> "$GITHUB_OUTPUT"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}.Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          tags: ghcr.io/databuddy-analytics/databuddy-${{ matrix.service }}:${{ github.event.release.tag_name }}-${{ steps.platform.outputs.arch }}
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ steps.platform.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ steps.platform.outputs.arch }}
+
+  manifest:
+    name: Publish ${{ matrix.service }} manifest
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        service: [api, basket, links, uptime]
+
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.ioso i 
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        run: |
+          IMAGE="ghcr.io/databuddy-analytics/databuddy-${{ matrix.service }}"
+          TAG="${{ github.event.release.tag_name }}"
+
+          docker buildx imagetools create \
+            --tag "$IMAGE:$TAG" \
+            --tag "$IMAGE:latest" \
+            "$IMAGE:$TAG-amd64" \
+            "$IMAGE:$TAG-arm64"
