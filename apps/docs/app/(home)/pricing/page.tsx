@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Footer } from "@/components/footer";
+import { AiPricingSummary } from "./_pricing/ai-pricing-summary";
 import { displayNameForPlan, selectBestPlan } from "./_pricing/best-plan";
-import { PricingFaq } from "./pricing-faq";
 import { Estimator } from "./_pricing/estimator";
 import { estimateTieredOverageCostFromTiers } from "./_pricing/estimator-utils";
 import { normalizePlans } from "./_pricing/normalize";
 import { PlansComparisonTable } from "./_pricing/table";
 import type { NormalizedPlan } from "./_pricing/types";
 import { RAW_PLANS } from "./data";
+import { PricingFaq } from "./pricing-faq";
 
 const PLANS: NormalizedPlan[] = normalizePlans(RAW_PLANS);
 
@@ -50,6 +51,8 @@ export default function PricingPage() {
 						you use.
 					</p>
 				</header>
+
+				<AiPricingSummary plans={RAW_PLANS} />
 
 				<PlansComparisonTable plans={PLANS} />
 

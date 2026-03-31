@@ -1,17 +1,12 @@
+import {
+	AGENT_SQL_VALIDATION_ERROR,
+	requiresTenantFilter,
+	validateAgentSQL,
+} from "@databuddy/db";
 import { tool } from "ai";
 import { z } from "zod";
-import {
-	executeTimedQuery,
-	type QueryResult,
-	SQL_VALIDATION_ERROR,
-	validateSQL,
-} from "./utils";
+import { executeTimedQuery, type QueryResult } from "./utils";
 
-/**
- * Tool for executing validated, read-only ClickHouse SQL queries.
- * Only SELECT and WITH statements are allowed for security.
- * Cached to improve performance for repeated or similar queries.
- */
 export const executeSqlQueryTool = tool({
 	description:
 		"Executes a validated, read-only ClickHouse SQL query against analytics data. Only SELECT and WITH statements are allowed for security. IMPORTANT: Use parameterized queries with {paramName:Type} syntax (e.g., {limit:UInt32}). The websiteId is automatically included as a parameter. Never use string interpolation or concatenation.",
@@ -42,8 +37,15 @@ export const executeSqlQueryTool = tool({
 			),
 	}),
 	execute: async ({ sql, websiteId, params }): Promise<QueryResult> => {
-		if (!validateSQL(sql)) {
-			throw new Error(SQL_VALIDATION_ERROR);
+		const validation = validateAgentSQL(sql);
+		if (!validation.valid) {
+			throw new Error(validation.reason ?? AGENT_SQL_VALIDATION_ERROR);
+		}
+
+		if (!requiresTenantFilter(sql)) {
+			throw new Error(
+				"Query must include tenant isolation: WHERE client_id = {websiteId:String}"
+			);
 		}
 
 		const result = await executeTimedQuery("Execute SQL Tool", sql, {

@@ -373,6 +373,10 @@ export const funnelDefinitions = pgTable(
 		deletedAt: timestamp({ precision: 3 }),
 	},
 	(table) => [
+		index("funnel_definitions_website_id_idx").using(
+			"btree",
+			table.websiteId.asc().nullsLast().op("text_ops")
+		),
 		index("idx_funnel_definitions_createdBy").using(
 			"btree",
 			table.createdBy.asc().nullsLast().op("text_ops")
@@ -412,6 +416,10 @@ export const goals = pgTable(
 		deletedAt: timestamp({ precision: 3 }),
 	},
 	(table) => [
+		index("goals_website_id_idx").using(
+			"btree",
+			table.websiteId.asc().nullsLast().op("text_ops")
+		),
 		index("idx_goals_createdBy").using(
 			"btree",
 			table.createdBy.asc().nullsLast().op("text_ops")
@@ -514,6 +522,14 @@ export const apikey = pgTable(
 		updatedAt: timestamp("updated_at").notNull().defaultNow(),
 	},
 	(table) => [
+		index("apikey_user_id_idx").using(
+			"btree",
+			table.userId.asc().nullsLast().op("text_ops")
+		),
+		index("apikey_organization_id_idx").using(
+			"btree",
+			table.organizationId.asc().nullsLast().op("text_ops")
+		),
 		foreignKey({
 			columns: [table.userId],
 			foreignColumns: [user.id],
@@ -541,13 +557,7 @@ export const organization = pgTable(
 		createdAt: timestamp("created_at").notNull(),
 		metadata: text(),
 	},
-	(table) => [
-		unique("organizations_slug_unique").on(table.slug),
-		index("idx_organization_logo").using(
-			"btree",
-			table.logo.asc().nullsLast().op("text_ops")
-		),
-	]
+	(table) => [unique("organizations_slug_unique").on(table.slug)]
 );
 
 export const assistantConversations = pgTable(
@@ -564,6 +574,10 @@ export const assistantConversations = pgTable(
 		index("idx_assistant_conversations_user_id").using(
 			"btree",
 			table.userId.asc().nullsLast().op("text_ops")
+		),
+		index("assistant_conversations_website_id_idx").using(
+			"btree",
+			table.websiteId.asc().nullsLast().op("text_ops")
 		),
 		foreignKey({
 			columns: [table.userId],
@@ -742,6 +756,10 @@ export const annotations = pgTable(
 		deletedAt: timestamp("deleted_at", { precision: 3 }),
 	},
 	(table) => [
+		index("annotations_website_id_idx").using(
+			"btree",
+			table.websiteId.asc().nullsLast().op("text_ops")
+		),
 		index("idx_annotations_created_by").using(
 			"btree",
 			table.createdBy.asc().nullsLast().op("text_ops")
@@ -874,10 +892,6 @@ export const flagsToTargetGroups = pgTable(
 	},
 	(table) => [
 		primaryKey({ columns: [table.flagId, table.targetGroupId] }),
-		index("flags_to_target_groups_flag_id_idx").using(
-			"btree",
-			table.flagId.asc().nullsLast()
-		),
 		index("flags_to_target_groups_target_group_id_idx").using(
 			"btree",
 			table.targetGroupId.asc().nullsLast()
@@ -996,10 +1010,6 @@ export const usageAlertLog = pgTable(
 			.notNull(),
 	},
 	(table) => [
-		index("usage_alert_log_user_id_idx").using(
-			"btree",
-			table.userId.asc().nullsLast().op("text_ops")
-		),
 		index("usage_alert_log_user_feature_idx").using(
 			"btree",
 			table.userId.asc().nullsLast().op("text_ops"),
@@ -1042,10 +1052,6 @@ export const revenueConfig = pgTable(
 		uniqueIndex("revenue_config_owner_website_unique").on(
 			table.ownerId,
 			table.websiteId
-		),
-		index("revenue_config_owner_id_idx").using(
-			"btree",
-			table.ownerId.asc().nullsLast().op("text_ops")
 		),
 		foreignKey({
 			columns: [table.websiteId],
@@ -1224,7 +1230,7 @@ export const alarms = pgTable(
 			"btree",
 			table.websiteId.asc().nullsLast().op("text_ops")
 		),
-		index("alarms_enabled_idx").using("btree", table.enabled.asc().nullsLast()),
+		index("alarms_org_enabled_idx").on(table.organizationId, table.enabled),
 		foreignKey({
 			columns: [table.organizationId],
 			foreignColumns: [organization.id],
@@ -1258,10 +1264,6 @@ export const alarmDestinations = pgTable(
 			.notNull(),
 	},
 	(table) => [
-		index("alarm_destinations_alarm_id_idx").using(
-			"btree",
-			table.alarmId.asc().nullsLast().op("text_ops")
-		),
 		index("alarm_destinations_type_idx").using(
 			"btree",
 			table.type.asc().nullsLast().op("text_ops")

@@ -1,4 +1,9 @@
 import { auth } from "@databuddy/auth";
+import {
+	AGENT_SQL_VALIDATION_ERROR,
+	requiresTenantFilter,
+	validateAgentSQL,
+} from "@databuddy/db";
 import { tool } from "ai";
 import { z } from "zod";
 import { getAccessibleWebsites } from "../../lib/accessible-websites";
@@ -17,11 +22,7 @@ import { createGoalTools } from "../tools/goals";
 import { createLinksTools } from "../tools/links";
 import { createMemoryTools } from "../tools/memory";
 import { createProfileTools } from "../tools/profiles";
-import {
-	executeTimedQuery,
-	SQL_VALIDATION_ERROR,
-	validateSQL,
-} from "../tools/utils";
+import { executeTimedQuery } from "../tools/utils";
 import { webSearchTool } from "../tools/web-search";
 import { buildBatchQueryRequests, MCP_DATE_PRESETS } from "./mcp-utils";
 
@@ -185,8 +186,14 @@ export function createMcpAgentTools() {
 				if (access instanceof Error) {
 					throw new Error(access.message);
 				}
-				if (!validateSQL(sql)) {
-					throw new Error(SQL_VALIDATION_ERROR);
+				const validation = validateAgentSQL(sql);
+				if (!validation.valid) {
+					throw new Error(validation.reason ?? AGENT_SQL_VALIDATION_ERROR);
+				}
+				if (!requiresTenantFilter(sql)) {
+					throw new Error(
+						"Query must include tenant isolation: WHERE client_id = {websiteId:String}"
+					);
 				}
 				const result = await executeTimedQuery(
 					"MCP Agent SQL",

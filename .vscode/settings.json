@@ -31,6 +31,6 @@
 		"source.fixAll.biome": "explicit",
 		"source.organizeImports.biome": "explicit"
 	},
-	"typescript.experimental.useTsgo": false,
+	"typescript.experimental.useTsgo": true,
 	"typescript.enablePromptUseWorkspaceTsdk": true
 }

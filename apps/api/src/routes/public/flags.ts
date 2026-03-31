@@ -197,6 +197,50 @@ const getCachedFlagsForClient = cacheable(
 	}
 );
 
+const getCachedFlagsForUser = cacheable(
+	async (userId: string, environment?: string) => {
+		const environmentCondition = environment
+			? eq(flags.environment, environment)
+			: isNull(flags.environment);
+
+		const flagsList = await db.query.flags.findMany({
+			where: and(
+				isNull(flags.deletedAt),
+				eq(flags.status, "active"),
+				environmentCondition,
+				eq(flags.userId, userId)
+			),
+			with: {
+				flagsToTargetGroups: {
+					with: {
+						targetGroup: true,
+					},
+				},
+			},
+		});
+
+		return flagsList.map((flag) => {
+			const resolvedTargetGroups: TargetGroupData[] = flag.flagsToTargetGroups
+				.filter((ftg) => ftg.targetGroup && !ftg.targetGroup.deletedAt)
+				.map((ftg) => ({
+					id: ftg.targetGroup.id,
+					rules: (ftg.targetGroup.rules as FlagRule[]) || [],
+				}));
+
+			return {
+				...flag,
+				resolvedTargetGroups,
+			};
+		});
+	},
+	{
+		expireInSec: 30,
+		prefix: "flags-user",
+		staleWhileRevalidate: true,
+		staleTime: 15,
+	}
+);
+
 export function hashString(str: string): number {
 	let hash = 0;
 	for (let i = 0; i < str.length; i += 1) {
@@ -510,10 +554,19 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 					properties: parseProperties(query.properties),
 				};
 
-				const flag = await fromMemory(
+				let flag = await fromMemory(
 					`f:${query.key}:${query.clientId}:${query.environment || ""}`,
 					() => getCachedFlag(query.key, query.clientId, query.environment)
 				);
+
+				if (!flag && context.userId) {
+					const uid = context.userId;
+					const userFlags = await fromMemory(
+						`fu:${uid}:${query.environment || ""}`,
+						() => getCachedFlagsForUser(uid, query.environment)
+					);
+					flag = userFlags.find((f) => f.key === query.key) ?? null;
+				}
 
 				if (!flag) {
 					mergeWideEvent({ flag_found: false });
@@ -591,10 +644,27 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 						)
 					: null;
 
-				const allFlags = await fromMemory(
+				const clientFlags = await fromMemory(
 					`fc:${query.clientId}:${query.environment || ""}`,
 					() => getCachedFlagsForClient(query.clientId, query.environment)
 				);
+
+				let allFlags = clientFlags;
+
+				if (context.userId) {
+					const uid = context.userId;
+					const userFlags = await fromMemory(
+						`fu:${uid}:${query.environment || ""}`,
+						() => getCachedFlagsForUser(uid, query.environment)
+					);
+					if (userFlags.length > 0) {
+						const clientKeys = new Set(clientFlags.map((f) => f.key));
+						const uniqueUserFlags = userFlags.filter(
+							(f) => !clientKeys.has(f.key)
+						);
+						allFlags = [...clientFlags, ...uniqueUserFlags];
+					}
+				}
 
 				const flagsToEvaluate = requestedKeys
 					? allFlags.filter((f) => requestedKeys.has(f.key))
@@ -644,10 +714,12 @@ export const flagsRoute = new Elysia({ prefix: "/v1/flags" })
 					return { flags: [], error: "Missing required clientId parameter" };
 				}
 
-				const allFlags = await fromMemory(
+				const clientFlags = await fromMemory(
 					`fc:${query.clientId}:${query.environment || ""}`,
 					() => getCachedFlagsForClient(query.clientId, query.environment)
 				);
+
+				const allFlags = clientFlags;
 
 				mergeWideEvent({ flag_total_flags: allFlags.length });
 
