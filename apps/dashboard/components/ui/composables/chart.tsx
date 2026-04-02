@@ -62,6 +62,7 @@ import {
 	chartTooltipMultiShellClassName,
 	chartTooltipSingleShellClassName,
 } from "@/lib/chart-presentation";
+import dayjs from "@/lib/dayjs";
 import { formatMetricNumber } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +100,11 @@ function ChartTooltip({
 	if (!active) return null;
 
 	const displayLabel =
-		label && formatLabelAction ? formatLabelAction(label) : label;
+		label == null || label === ""
+			? undefined
+			: formatLabelAction
+				? formatLabelAction(label)
+				: label;
 
 	if (singleValue) {
 		return (
@@ -191,14 +196,31 @@ function createTooltipEntries(
 }
 
 function formatTooltipDate(dateStr: string): string {
-	try {
-		return new Date(dateStr).toLocaleDateString("en-US", {
-			month: "short",
-			day: "numeric",
-		});
-	} catch {
+	const trimmed = dateStr.trim();
+	let parsed: dayjs.Dayjs;
+	if (/^\d+$/.test(trimmed)) {
+		const n = Number(trimmed);
+		if (trimmed.length === 13 && n >= 1_000_000_000_000) {
+			parsed = dayjs(n);
+		} else if (
+			trimmed.length === 10 &&
+			n >= 1_000_000_000 &&
+			n < 100_000_000_000
+		) {
+			parsed = dayjs.unix(n);
+		} else {
+			parsed = dayjs(trimmed);
+		}
+	} else {
+		parsed = dayjs(trimmed);
+	}
+	if (!parsed.isValid()) {
 		return dateStr;
 	}
+	if (trimmed.length > 10 || /\d{1,2}:\d{2}/.test(trimmed)) {
+		return parsed.format("MMM D, h:mm A");
+	}
+	return parsed.format("MMM D");
 }
 
 // ── Chart types ─────────────────────────────────────────────────────────
@@ -277,9 +299,34 @@ function toFiniteNumber(v: unknown): number | null {
 }
 
 type RechartsTooltipPayloadEntry = {
-	payload?: { value?: unknown };
+	payload?: { date?: unknown; value?: unknown };
 	value?: unknown;
 };
+
+type ChartTooltipPayloadRow = RechartsTooltipPayloadEntry["payload"];
+
+function firstTooltipPayloadRow(
+	payload: RechartsTooltipPayloadEntry[] | undefined
+): ChartTooltipPayloadRow {
+	return payload?.[0]?.payload;
+}
+
+function resolveTooltipDateLabel(
+	label: string | number | undefined,
+	payloadRow: ChartTooltipPayloadRow,
+	dateKey = "date"
+): string | undefined {
+	if (payloadRow && typeof payloadRow === "object" && dateKey in payloadRow) {
+		const d = (payloadRow as Record<string, unknown>)[dateKey];
+		if (typeof d === "string" || typeof d === "number") {
+			return String(d);
+		}
+	}
+	if (label == null || label === "") {
+		return undefined;
+	}
+	return String(label);
+}
 
 function readTooltipNumericValue(
 	entry: RechartsTooltipPayloadEntry
@@ -298,10 +345,7 @@ function readTooltipNumericValue(
 	return null;
 }
 
-/**
- * Recharts `<Tooltip content={…} />` for a single-series chart.
- * Uses `ChartTooltip` single-value layout + `formatTooltipDate`.
- */
+/** Recharts `<Tooltip content={…} />` for single-series charts (`ChartTooltip` + `formatTooltipDate`). */
 export function createRechartsSingleValueTooltip(
 	params: RechartsSingleValueTooltipParams
 ) {
@@ -322,11 +366,12 @@ export function createRechartsSingleValueTooltip(
 			return null;
 		}
 		const labelFormatter = params.formatLabelAction ?? formatTooltipDate;
+		const resolvedLabel = resolveTooltipDateLabel(props.label, entry.payload);
 		return (
 			<ChartTooltip
 				active
 				formatLabelAction={labelFormatter}
-				label={props.label == null ? undefined : String(props.label)}
+				label={resolvedLabel}
 				singleValue={{
 					formattedValue: params.formatValue
 						? params.formatValue(raw)
@@ -404,10 +449,8 @@ function ChartSingleSeries({
 
 	const tooltipEl = tooltipContent ? (
 		<Tooltip
-			allowEscapeViewBox={{ x: true, y: true }}
 			content={tooltipContent}
 			cursor={isBar ? chartTooltipCursorBar : chartTooltipCursorLine}
-			wrapperStyle={{ zIndex: 50 }}
 		/>
 	) : null;
 
@@ -564,9 +607,11 @@ function ChartCartesianArea({
 									[metricRow]
 								)}
 								formatLabelAction={formatTooltipLabel}
-								label={
-									props.label == null ? undefined : String(props.label)
-								}
+								label={resolveTooltipDateLabel(
+									props.label,
+									firstTooltipPayloadRow(props.payload),
+									dateKey
+								)}
 							/>
 						)}
 						cursor={chartTooltipCursorLine}
@@ -669,7 +714,10 @@ function ChartMultiSeries({
 							series
 						)}
 						formatLabelAction={formatTooltipDate}
-						label={props.label == null ? undefined : String(props.label)}
+						label={resolveTooltipDateLabel(
+							props.label,
+							firstTooltipPayloadRow(props.payload)
+						)}
 					/>
 				)}
 				cursor={

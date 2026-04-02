@@ -174,8 +174,8 @@ export const WebsiteCard = memo(
 								data-website-name={website.name}
 								href={`/websites/${website.id}`}
 							>
-								<Card className="flex h-full select-none flex-col gap-0 overflow-hidden bg-background p-0 transition-all duration-300 ease-in-out group-hover:border-primary/60 motion-reduce:transform-none motion-reduce:transition-none">
-									<CardHeader className="dotted-bg relative gap-0! border-b bg-accent px-0 pt-4 pb-0!">
+								<Card className="relative z-0 flex h-full select-none flex-col gap-0 bg-background p-0 transition-all duration-300 ease-in-out group-hover:z-50 group-hover:border-primary/60 motion-reduce:transform-none motion-reduce:transition-none">
+									<CardHeader className="dotted-bg relative gap-0! rounded-t border-b bg-accent px-0 pt-4 pb-0!">
 										{activeUsers !== undefined && activeUsers > 0 && (
 											<div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 font-medium text-success text-xs tabular-nums backdrop-blur-sm">
 												<span className="relative flex size-1.5">
