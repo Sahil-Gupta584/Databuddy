@@ -221,50 +221,139 @@ const ATTRIBUTION_CTE = `
 
 export const RevenueBuilders: Record<string, SimpleQueryConfig> = {
 	revenue_overview: {
-		customSql: (websiteId: string, startDate: string, endDate: string) => ({
-			sql: `
-				WITH ${ATTRIBUTION_CTE}
-				SELECT 
-					sumIf(amount, type != 'refund') as total_revenue,
-					countIf(type != 'refund') as total_transactions,
-					sumIf(amount, type = 'refund') as refund_amount,
-					countIf(type = 'refund') as refund_count,
-					sumIf(amount, type = 'subscription') as subscription_revenue,
-					countIf(type = 'subscription') as subscription_count,
-					sumIf(amount, type = 'sale') as sale_revenue,
-					countIf(type = 'sale') as sale_count,
-					uniq(r_customer_id) as unique_customers,
-					countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions,
-					sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue
-				FROM revenue_attributed
-			`,
-			params: { websiteId, startDate, endDate },
-		}),
+		meta: {
+			title: "Revenue Overview",
+			description: "Total revenue and transaction metrics.",
+			category: "Revenue",
+			tags: ["overview", "revenue", "transactions"],
+			output_fields: [
+				{ name: "total_revenue", type: "number", label: "Total Revenue" },
+				{ name: "total_transactions", type: "number", label: "Total Transactions" },
+				{ name: "refund_amount", type: "number", label: "Refund Amount" },
+				{ name: "refund_count", type: "number", label: "Refund Count" },
+				{ name: "unique_customers", type: "number", label: "Unique Customers" },
+				{ name: "attributed_revenue", type: "number", label: "Attributed Revenue" },
+				{ name: "attributed_transactions", type: "number", label: "Attributed Transactions" },
+				{ name: "total_visitors", type: "number", label: "Total Visitors" },
+			],
+			default_visualization: "metric",
+			supports_granularity: [],
+			version: "1.0",
+		},
+		customSql: (
+			websiteId: string,
+			startDate: string,
+			endDate: string,
+			_filters?: Filter[],
+			_granularity?: TimeUnit,
+			_limit?: number,
+			_offset?: number,
+			timezone?: string
+		) => {
+			const tz = timezone || "UTC";
+			return {
+				sql: `
+					WITH 
+						${ATTRIBUTION_CTE},
+						visitors AS (
+							SELECT uniq(anonymous_id) as total_visitors
+							FROM analytics.events
+							WHERE client_id = {websiteId:String}
+							  AND time >= toDateTime({startDate:String})
+							  AND time <= toDateTime(concat({endDate:String}, ' 23:59:59'))
+						)
+					SELECT 
+						sumIf(amount, type != 'refund') as total_revenue,
+						countIf(type != 'refund') as total_transactions,
+						sumIf(amount, type = 'refund') as refund_amount,
+						countIf(type = 'refund') as refund_count,
+						sumIf(amount, type = 'subscription') as subscription_revenue,
+						countIf(type = 'subscription') as subscription_count,
+						sumIf(amount, type = 'sale') as sale_revenue,
+						countIf(type = 'sale') as sale_count,
+						uniq(r_customer_id) as unique_customers,
+						countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions,
+						sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue,
+						any(total_visitors) as total_visitors
+					FROM revenue_attributed
+					CROSS JOIN visitors
+				`,
+				params: { websiteId, startDate, endDate, timezone: tz },
+			};
+		},
 		timeField: "created",
 		customizable: false,
 	},
 
 	revenue_time_series: {
-		customSql: (websiteId: string, startDate: string, endDate: string) => ({
-			sql: `
-				WITH ${ATTRIBUTION_CTE}
+		meta: {
+			title: "Revenue Time Series",
+			description: "Daily or hourly breakdown of revenue metrics.",
+			category: "Revenue",
+			tags: ["timeseries", "revenue", "trends"],
+			output_fields: [
+				{ name: "date", type: "datetime", label: "Date" },
+				{ name: "revenue", type: "number", label: "Revenue" },
+				{ name: "transactions", type: "number", label: "Transactions" },
+				{ name: "customers", type: "number", label: "Customers" },
+			],
+			default_visualization: "timeseries",
+			supports_granularity: ["hour", "day"],
+			version: "1.0",
+		},
+		customSql: (
+			websiteId: string,
+			startDate: string,
+			endDate: string,
+			_filters?: Filter[],
+			_granularity?: TimeUnit,
+			_limit?: number,
+			_offset?: number,
+			timezone?: string
+		) => {
+			const tz = timezone || "UTC";
+			const isHourly = _granularity === "hour" || _granularity === "hourly";
+			const timeBucketFn = isHourly ? "toStartOfHour" : "toDate";
+			const dateFormat = isHourly
+				? "formatDateTime(time_bucket, '%Y-%m-%d %H:00:00')"
+				: "toDate(time_bucket)";
+
+			return {
+				sql: `
+				WITH 
+					${ATTRIBUTION_CTE},
+					base_revenue AS (
+						SELECT 
+							toTimeZone(created, {timezone:String}) as normalized_time,
+							amount,
+							type,
+							r_customer_id,
+							is_attributed
+						FROM revenue_attributed
+					),
+					revenue_agg AS (
+						SELECT 
+							${timeBucketFn}(normalized_time) as time_bucket,
+							sumIf(amount, type != 'refund') as revenue,
+							countIf(type != 'refund') as transactions,
+							uniq(r_customer_id) as customers,
+							sumIf(amount, type = 'refund') as refund_amount,
+							countIf(type = 'refund') as refund_count,
+							sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue,
+							countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions
+						FROM base_revenue
+						GROUP BY time_bucket
+					)
 				SELECT 
-					toDate(created) as date,
-					sumIf(amount, type != 'refund') as revenue,
-					countIf(type != 'refund') as transactions,
-					uniq(r_customer_id) as customers,
-					sumIf(amount, type = 'refund') as refund_amount,
-					countIf(type = 'refund') as refund_count,
-					sumIf(amount, is_attributed = 1 AND type != 'refund') as attributed_revenue,
-					countIf(is_attributed = 1 AND type != 'refund') as attributed_transactions
-				FROM revenue_attributed
-				GROUP BY date
-				ORDER BY date ASC
-			`,
-			params: { websiteId, startDate, endDate },
-		}),
+					${dateFormat} as date,
+					*
+				FROM revenue_agg
+				ORDER BY time_bucket ASC`,
+				params: { websiteId, startDate, endDate, timezone: tz },
+			};
+		},
 		timeField: "created",
-		customizable: false,
+		customizable: true,
 	},
 
 	revenue_by_provider: {

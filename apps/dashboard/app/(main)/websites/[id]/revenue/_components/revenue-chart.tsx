@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartLineIcon } from "@phosphor-icons/react";
+import dayjs from "dayjs";
 import { useAtom } from "jotai";
 import { useMemo } from "react";
 import { SkeletonChart } from "@/components/charts/skeleton-chart";
@@ -98,18 +99,45 @@ const REVENUE_METRICS: RevenueChartMetric[] = [
 				maximumFractionDigits: 0,
 			}).format(Math.abs(v)),
 	},
+	{
+		key: "revenue",
+		label: "Revenue",
+		color: "#10b981",
+		formatValue: (v) =>
+			new Intl.NumberFormat("en-US", {
+				style: "currency",
+				currency: "USD",
+				minimumFractionDigits: 0,
+				maximumFractionDigits: 0,
+			}).format(v),
+	},
 ];
+
+const CURRENCY_METRICS = ["revenue", "avg_transaction", "refunds"];
 
 interface RevenueChartProps {
 	data: RevenueChartDataPoint[];
 	isLoading: boolean;
+	granularity?: string;
 	height?: number;
 	className?: string;
+}
+
+function formatChartDate(value: string, granularity?: string): string {
+	const parsed = dayjs(value);
+	if (!parsed.isValid()) {
+		return value;
+	}
+	if (granularity === "hour" || granularity === "hourly") {
+		return parsed.format("MMM D, h:mm A");
+	}
+	return parsed.format("MMM D, YYYY");
 }
 
 export function RevenueChart({
 	data,
 	isLoading,
+	granularity,
 	height = 350,
 	className,
 }: RevenueChartProps) {
@@ -204,13 +232,31 @@ export function RevenueChart({
 							axisLine={false}
 							dataKey="date"
 							tick={chartAxisTickDefault}
+							tickFormatter={(value) => formatChartDate(value, granularity)}
 							tickLine={false}
 						/>
 						<YAxis
 							axisLine={false}
+							orientation="left"
 							tick={chartAxisTickDefault}
+							tickFormatter={(value) =>
+								new Intl.NumberFormat("en-US", {
+									notation: "compact",
+									style: "currency",
+									currency: "USD",
+								}).format(value)
+							}
 							tickLine={false}
 							width={chartAxisYWidthDefault}
+							yAxisId="currency"
+						/>
+						<YAxis
+							axisLine={false}
+							orientation="right"
+							tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+							tickLine={false}
+							width={35}
+							yAxisId="count"
 						/>
 						<Tooltip
 							content={({ active, payload, label }) => (
@@ -274,8 +320,11 @@ export function RevenueChart({
 								key={metric.key}
 								name={metric.label}
 								stroke={metric.color}
-								strokeWidth={2.5}
+								strokeWidth={metric.key === "revenue" ? 3 : 2}
 								type="monotone"
+								yAxisId={
+									CURRENCY_METRICS.includes(metric.key) ? "currency" : "count"
+								}
 							/>
 						))}
 					</ComposedChart>

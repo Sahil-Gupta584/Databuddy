@@ -13,7 +13,6 @@ import { EyeIcon } from "@phosphor-icons/react/dist/ssr/Eye";
 import { EyeSlashIcon } from "@phosphor-icons/react/dist/ssr/EyeSlash";
 import { GearIcon } from "@phosphor-icons/react/dist/ssr/Gear";
 import { LinkIcon } from "@phosphor-icons/react/dist/ssr/Link";
-import { ReceiptIcon } from "@phosphor-icons/react/dist/ssr/Receipt";
 import { SpinnerIcon } from "@phosphor-icons/react/dist/ssr/Spinner";
 import { StripeLogoIcon } from "@phosphor-icons/react/dist/ssr/StripeLogo";
 import { TrendUpIcon } from "@phosphor-icons/react/dist/ssr/TrendUp";
@@ -45,6 +44,7 @@ import { cn } from "@/lib/utils";
 import {
 	addDynamicFilterAtom,
 	dynamicQueryFiltersAtom,
+	type TimeGranularity,
 } from "@/stores/jotai/filterAtoms";
 import { WebsitePageHeader } from "../../_components/website-page-header";
 import { RevenueAttributionTables } from "./revenue-attribution-tables";
@@ -66,6 +66,7 @@ interface RevenueOverview {
 	unique_customers: number;
 	attributed_transactions: number;
 	attributed_revenue: number;
+	total_visitors: number;
 }
 
 interface RevenueTimeSeries {
@@ -107,28 +108,36 @@ function padTimeSeriesData<T extends { date: string }>(
 	data: T[],
 	startDate: string,
 	endDate: string,
-	defaultValues: Omit<T, "date">
-): T[] {
-	if (data.length === 0) {
-		return [];
-	}
+	defaultValues: Omit<T, "date">,
+	granularity: TimeGranularity = "daily"
+) {
+	const unit = granularity === "hourly" ? "hour" : "day";
+	const format = unit === "hour" ? "YYYY-MM-DD HH:00:00" : "YYYY-MM-DD";
 
-	const dataMap = new Map(data.map((d) => [d.date, d]));
+	// Use numeric timestamps for robust matching
+	const dataMap = new Map(
+		data.map((d) => [dayjs(d.date).startOf(unit).valueOf(), d])
+	);
+
 	const result: T[] = [];
-	let current = dayjs(startDate);
-	const end = dayjs(endDate);
+	let current = dayjs(startDate).startOf(unit);
+	const end =
+		unit === "hour"
+			? dayjs(endDate).endOf("day")
+			: dayjs(endDate).startOf(unit);
 
-	while (current.isBefore(end) || current.isSame(end, "day")) {
-		const dateStr = current.format("YYYY-MM-DD");
-		const existing = dataMap.get(dateStr);
+	while (current.isBefore(end) || current.isSame(end, unit)) {
+		const timestamp = current.valueOf();
+		const dateStr = current.format(format);
+		const existing = dataMap.get(timestamp);
 
 		if (existing) {
-			result.push(existing);
+			result.push({ ...existing, date: dateStr });
 		} else {
 			result.push({ date: dateStr, ...defaultValues } as T);
 		}
 
-		current = current.add(1, "day");
+		current = current.add(1, unit);
 	}
 
 	return result;
@@ -339,7 +348,7 @@ function RevenueSettingsSheet({
 												</p>
 												<a
 													className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
-													href="https://dashboard.stripe.com/webhooks/create"
+													href={`https://dashboard.stripe.com/webhooks/create?events=${STRIPE_EVENTS.required.join(",")}`}
 													rel="noopener noreferrer"
 													target="_blank"
 												>
@@ -672,7 +681,10 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 	) ?? []) as RevenueTimeSeries[];
 
 	const overview = overviewData[0];
-	const hasData = overview && overview.total_transactions > 0;
+	const visitors = overview?.total_visitors ?? 0;
+	const totalRevenue = Number(overview?.total_revenue ?? 0);
+	const hasData =
+		overview && (overview.total_transactions > 0 || totalRevenue > 0);
 	const isConfigured = config?.stripeConfigured || config?.paddleConfigured;
 
 	const paddedTimeSeriesData = useMemo(() => {
@@ -686,9 +698,15 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 				customers: 0,
 				refund_amount: 0,
 				refund_count: 0,
-			}
+			},
+			dateRange.granularity
 		);
-	}, [timeSeriesData, dateRange.start_date, dateRange.end_date]);
+	}, [
+		timeSeriesData,
+		dateRange.start_date,
+		dateRange.end_date,
+		dateRange.granularity,
+	]);
 
 	const chartData = useMemo(() => {
 		return paddedTimeSeriesData.map((row) => ({
@@ -721,6 +739,8 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 		return "Not configured";
 	};
 
+	console.log({overview,visitors});
+	
 	return (
 		<>
 			<WebsitePageHeader
@@ -743,12 +763,17 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 				<div className="space-y-3 p-4">
 					<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
 						<StatCard
+							description={
+								overview?.total_transactions
+									? `${overview.total_transactions} transactions`
+									: undefined
+							}
 							displayMode="text"
-							icon={ReceiptIcon}
-							id="transactions"
+							icon={CurrencyDollarIcon}
+							id="total-revenue"
 							isLoading={isLoading}
-							title="Transactions"
-							value={overview?.total_transactions ?? 0}
+							title="Total Revenue"
+							value={formatCurrency(totalRevenue)}
 						/>
 						<StatCard
 							displayMode="text"
@@ -780,19 +805,14 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 							value={overview?.unique_customers ?? 0}
 						/>
 						<StatCard
-							description={
-								overview?.attributed_transactions
-									? `${overview.attributed_transactions} of ${overview.total_transactions} transactions`
-									: undefined
-							}
 							displayMode="text"
 							icon={TrendUpIcon}
-							id="attribution-rate"
+							id="conversion-rate"
 							isLoading={isLoading}
-							title="Attribution Rate"
+							title="Conversion Rate"
 							value={
-								overview?.total_transactions
-									? `${Math.round((overview.attributed_transactions / overview.total_transactions) * 100)}%`
+								visitors
+									? `${(((overview?.total_transactions ?? 0) / visitors) * 100).toFixed(2)}%`
 									: "0%"
 							}
 						/>
@@ -812,6 +832,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 							<RevenueChart
 								className="rounded border-0"
 								data={chartData}
+								granularity={dateRange.granularity}
 								height={isMobile ? 250 : 350}
 								isLoading={isLoading}
 							/>
