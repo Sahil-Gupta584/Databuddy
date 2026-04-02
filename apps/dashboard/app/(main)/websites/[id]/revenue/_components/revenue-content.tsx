@@ -739,8 +739,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 		return "Not configured";
 	};
 
-	console.log({overview,visitors});
-	
+
 	return (
 		<>
 			<WebsitePageHeader
@@ -812,7 +811,7 @@ export function RevenueContent({ websiteId }: RevenueContentProps) {
 							title="Conversion Rate"
 							value={
 								visitors
-									? `${(((overview?.total_transactions ?? 0) / visitors) * 100).toFixed(2)}%`
+									? `${(((overview?.unique_customers ?? 0) / visitors) * 100).toFixed(2)}%`
 									: "0%"
 							}
 						/>

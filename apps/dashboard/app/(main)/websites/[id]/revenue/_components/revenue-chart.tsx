@@ -98,19 +98,7 @@ const REVENUE_METRICS: RevenueChartMetric[] = [
 				minimumFractionDigits: 0,
 				maximumFractionDigits: 0,
 			}).format(Math.abs(v)),
-	},
-	{
-		key: "revenue",
-		label: "Revenue",
-		color: "#10b981",
-		formatValue: (v) =>
-			new Intl.NumberFormat("en-US", {
-				style: "currency",
-				currency: "USD",
-				minimumFractionDigits: 0,
-				maximumFractionDigits: 0,
-			}).format(v),
-	},
+	}
 ];
 
 const CURRENCY_METRICS = ["revenue", "avg_transaction", "refunds"];
