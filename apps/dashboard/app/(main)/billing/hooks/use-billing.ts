@@ -33,7 +33,7 @@ export function useBilling(refetch?: () => void) {
 		try {
 			await attach({
 				planId,
-				successUrl: `${window.location.origin}/billing`,
+				successUrl: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
 				metadata: getStripeMetadata(),
 			});
 		} catch (error) {

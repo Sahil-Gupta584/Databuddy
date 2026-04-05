@@ -81,10 +81,10 @@ interface WebhookEvent {
 	type: string;
 	data: {
 		object:
-			| WebhookPaymentIntent
-			| WebhookCharge
-			| WebhookInvoice
-			| WebhookSubscription;
+		| WebhookPaymentIntent
+		| WebhookCharge
+		| WebhookInvoice
+		| WebhookSubscription;
 	};
 }
 
@@ -207,9 +207,46 @@ async function getConfig(
 	};
 }
 
+async function fetchSessionFromCheckoutSessionId(
+	checkoutSessionId: string,
+	ownerId: string
+) {
+	const results = await clickHouse.query({
+		query: `
+				SELECT 
+					anonymous_id,
+					session_id
+				FROM analytics.custom_events
+				WHERE 
+					event_name = 'checkout_session'
+					AND owner_id = {ownerId:String}
+					AND JSONExtractString(properties, 'checkout_session_id') = {checkoutSessionId:String}
+				ORDER BY timestamp DESC
+				LIMIT 1
+			`,
+		query_params: {
+			ownerId,
+			checkoutSessionId,
+		},
+		format: "JSONEachRow",
+	});
+
+	const data = (await results.json()) as any[];
+	if (data && data.length > 0) {
+		return {
+			anonymous_id: data[0].anonymous_id,
+			session_id: data[0].session_id,
+		};
+	}
+
+	return null;
+}
+
 async function handlePaymentIntent(
 	pi: WebhookPaymentIntent,
-	config: WebhookConfig
+	config: WebhookConfig,
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 	const metadata = extractAnalyticsMetadata(pi.metadata);
@@ -243,8 +280,8 @@ async function handlePaymentIntent(
 				original_amount: amount,
 				original_currency: currency,
 				currency,
-				anonymous_id: metadata.anonymous_id || undefined,
-				session_id: metadata.session_id || undefined,
+				anonymous_id,
+				session_id,
 				customer_id: customerId,
 				product_name: pi.description || undefined,
 				metadata: JSON.stringify(metadata),
@@ -259,10 +296,13 @@ async function handlePaymentIntent(
 async function handleFailedPayment(
 	pi: WebhookPaymentIntent,
 	config: WebhookConfig,
-	status: "failed" | "canceled"
+	status: "failed" | "canceled",
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 	const metadata = extractAnalyticsMetadata(pi.metadata);
+
 	const customerId = extractCustomerId(pi.customer);
 	const amount = (pi.amount_received ?? pi.amount) / 100;
 	const currency = pi.currency.toUpperCase();
@@ -293,8 +333,8 @@ async function handleFailedPayment(
 				original_amount: amount,
 				original_currency: currency,
 				currency,
-				anonymous_id: metadata.anonymous_id || undefined,
-				session_id: metadata.session_id || undefined,
+				anonymous_id,
+				session_id,
 				customer_id: customerId,
 				product_name: pi.description || undefined,
 				metadata: JSON.stringify(metadata),
@@ -308,7 +348,9 @@ async function handleFailedPayment(
 
 async function handleInvoicePaid(
 	invoice: WebhookInvoice,
-	config: WebhookConfig
+	config: WebhookConfig,
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 
@@ -354,8 +396,8 @@ async function handleInvoicePaid(
 				original_amount: amount,
 				original_currency: currency,
 				currency,
-				anonymous_id: metadata.anonymous_id || undefined,
-				session_id: metadata.session_id || undefined,
+				anonymous_id,
+				session_id,
 				customer_id: customerId,
 				product_name: invoice.description || undefined,
 				metadata: JSON.stringify(metadata),
@@ -369,7 +411,9 @@ async function handleInvoicePaid(
 
 async function handleInvoiceFailed(
 	invoice: WebhookInvoice,
-	config: WebhookConfig
+	config: WebhookConfig,
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 	const metadata = extractAnalyticsMetadata(invoice.metadata);
@@ -404,8 +448,8 @@ async function handleInvoiceFailed(
 				original_amount: amount,
 				original_currency: currency,
 				currency,
-				anonymous_id: metadata.anonymous_id || undefined,
-				session_id: metadata.session_id || undefined,
+				anonymous_id,
+				session_id,
 				customer_id: customerId,
 				product_name: invoice.description || undefined,
 				metadata: JSON.stringify(metadata),
@@ -420,7 +464,9 @@ async function handleInvoiceFailed(
 async function handleSubscriptionEvent(
 	sub: WebhookSubscription,
 	config: WebhookConfig,
-	eventType: string
+	eventType: string,
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 	const metadata = extractAnalyticsMetadata(sub.metadata);
@@ -473,8 +519,8 @@ async function handleSubscriptionEvent(
 				original_amount: amount,
 				original_currency: currency,
 				currency,
-				anonymous_id: metadata.anonymous_id || undefined,
-				session_id: metadata.session_id || undefined,
+				anonymous_id,
+				session_id,
 				customer_id: customerId,
 				product_name: firstItem?.plan?.product || undefined,
 				metadata: JSON.stringify(subscriptionMetadata),
@@ -488,7 +534,9 @@ async function handleSubscriptionEvent(
 
 async function handleRefund(
 	charge: WebhookCharge,
-	config: WebhookConfig
+	config: WebhookConfig,
+	anonymous_id: string,
+	session_id?: string,
 ): Promise<void> {
 	const log = useLogger();
 	const metadata = extractAnalyticsMetadata(charge.metadata);
@@ -522,8 +570,8 @@ async function handleRefund(
 					original_amount: -amount,
 					original_currency: currency,
 					currency,
-					anonymous_id: metadata.anonymous_id || undefined,
-					session_id: metadata.session_id || undefined,
+					anonymous_id,
+					session_id,
 					customer_id: customerId,
 					product_name: "Refund",
 					metadata: JSON.stringify(metadata),
@@ -579,13 +627,50 @@ export const stripeWebhook = new Elysia().post(
 
 		const event = verification.event;
 		log.set({ eventType: event.type, eventId: event.id });
+		const stripeObject = event.data.object as any;
+		console.log({ stripeObject });
+
+		const checkoutSessionId =
+			stripeObject.metadata?.checkout_session_id ||
+			stripeObject.payment_details?.order_reference;
+
+		if (!checkoutSessionId) {
+			log.warn(
+				`Invalid webhook, No checkout session id found for ${event.id}`
+			);
+			set.status = 400;
+			return { error: "invalid_webhook" };
+		}
+
+		let anonymous_id = stripeObject.metadata?.anonymous_id;
+		let session_id = stripeObject.metadata?.session_id;
+
+		const existingSession = await fetchSessionFromCheckoutSessionId(
+			checkoutSessionId,
+			result.ownerId
+		);
+
+		if (existingSession) {
+			anonymous_id = existingSession.anonymous_id;
+			session_id = existingSession.session_id;
+		}
+
+		if (!anonymous_id) {
+			log.warn(
+				`Attribution pending for ${event.id} (checkout: ${checkoutSessionId}), returning 503 for retry`
+			);
+			set.status = 503;
+			return { error: "attribution_pending" };
+		}
 
 		try {
 			switch (event.type) {
 				case "payment_intent.succeeded": {
 					await handlePaymentIntent(
 						event.data.object as WebhookPaymentIntent,
-						result
+						result,
+						anonymous_id,
+						session_id
 					);
 					break;
 				}
@@ -593,7 +678,9 @@ export const stripeWebhook = new Elysia().post(
 					await handleFailedPayment(
 						event.data.object as WebhookPaymentIntent,
 						result,
-						"failed"
+						"failed",
+						anonymous_id,
+						session_id
 					);
 					break;
 				}
@@ -601,18 +688,27 @@ export const stripeWebhook = new Elysia().post(
 					await handleFailedPayment(
 						event.data.object as WebhookPaymentIntent,
 						result,
-						"canceled"
+						"canceled",
+						anonymous_id,
+						session_id
 					);
 					break;
 				}
 				case "invoice.paid": {
-					await handleInvoicePaid(event.data.object as WebhookInvoice, result);
+					await handleInvoicePaid(
+						event.data.object as WebhookInvoice,
+						result,
+						anonymous_id,
+						session_id
+					);
 					break;
 				}
 				case "invoice.payment_failed": {
 					await handleInvoiceFailed(
 						event.data.object as WebhookInvoice,
-						result
+						result,
+						anonymous_id,
+						session_id
 					);
 					break;
 				}
@@ -625,12 +721,19 @@ export const stripeWebhook = new Elysia().post(
 					await handleSubscriptionEvent(
 						event.data.object as WebhookSubscription,
 						result,
-						subEventType
+						subEventType,
+						anonymous_id,
+						session_id
 					);
 					break;
 				}
 				case "charge.refunded": {
-					await handleRefund(event.data.object as WebhookCharge, result);
+					await handleRefund(
+						event.data.object as WebhookCharge,
+						result,
+						anonymous_id,
+						session_id
+					);
 					break;
 				}
 				default: {

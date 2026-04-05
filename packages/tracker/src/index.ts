@@ -52,7 +52,7 @@ export class Databuddy extends BaseTracker {
 						this.flushTrack(),
 						this.flushVitals(),
 						this.flushErrors(),
-					]).catch(() => {});
+					]).catch(() => { });
 				},
 				clear: () => this.clear(),
 				setGlobalProperties: (props: Record<string, unknown>) =>
@@ -99,6 +99,31 @@ export class Databuddy extends BaseTracker {
 		initScrollDepthTracking(this);
 		if (this.options.trackInteractions) {
 			initInteractionTracking(this);
+		}
+		this.checkCheckoutSession();
+	}
+
+	private checkCheckoutSession(): void {
+		if (this.isServer()) {
+			return;
+		}
+
+		const urlParams = new URLSearchParams(window.location.search);
+		const sessionId = urlParams.get("session_id");
+
+		if (sessionId && (sessionId.startsWith("cs_") || sessionId.startsWith("checkout_"))) {
+			this.track("checkout_session", {
+				checkout_session_id: sessionId,
+				provider: "stripe",
+			});
+		}
+
+		const paddleCheckoutId = urlParams.get("checkout_id");
+		if (paddleCheckoutId) {
+			this.track("checkout_session", {
+				checkout_session_id: paddleCheckoutId,
+				provider: "paddle",
+			});
 		}
 	}
 
@@ -214,9 +239,9 @@ export class Databuddy extends BaseTracker {
 	}
 
 	private handlePageUnload() {
-		this.flushTrack().catch(() => {});
-		this.flushVitals().catch(() => {});
-		this.flushErrors().catch(() => {});
+		this.flushTrack().catch(() => { });
+		this.flushVitals().catch(() => { });
+		this.flushErrors().catch(() => { });
 		this.pauseEngagement();
 		if (this.hasSentExitBeacon) {
 			return;
@@ -360,7 +385,7 @@ export class Databuddy extends BaseTracker {
 				sessionStorage.removeItem("did_session");
 				sessionStorage.removeItem("did_session_timestamp");
 				sessionStorage.removeItem("did_session_start");
-			} catch {}
+			} catch { }
 		}
 		this.clearUrlParamStorage();
 		this.anonymousId = this.generateAnonymousId();
@@ -398,11 +423,11 @@ function initializeDatabuddy() {
 
 	if (isOptedOut()) {
 		window.databuddy = {
-			track: () => {},
-			screenView: () => {},
-			clear: () => {},
-			flush: () => {},
-			setGlobalProperties: () => {},
+			track: () => { },
+			screenView: () => { },
+			clear: () => { },
+			flush: () => { },
+			setGlobalProperties: () => { },
 			options: { clientId: "", disabled: true },
 		};
 		window.db = window.databuddy;
@@ -422,7 +447,7 @@ if (typeof window !== "undefined") {
 		try {
 			localStorage.setItem("databuddy_opt_out", "true");
 			localStorage.setItem("databuddy_disabled", "true");
-		} catch {}
+		} catch { }
 		window.databuddyOptedOut = true;
 		window.databuddyDisabled = true;
 		if (window.databuddy) {
@@ -434,7 +459,7 @@ if (typeof window !== "undefined") {
 		try {
 			localStorage.removeItem("databuddy_opt_out");
 			localStorage.removeItem("databuddy_disabled");
-		} catch {}
+		} catch { }
 		window.databuddyOptedOut = false;
 		window.databuddyDisabled = false;
 	};
